@@ -1,0 +1,76 @@
+[project]
+name = "launch"
+version = "0.1.0"
+description = "RepoLaunch - Turning Any Codebase into Testable Sandbox Environment"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "SWE-bench-Live Team" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "rich",
+    "docker",
+    "requests",
+    "GitPython",
+    
+    # LangChain ecosystem
+    "langchain",
+    "langchain-core",
+    "langchain-community",
+    "langchain-openai",
+    "langgraph",
+    
+    # Pydantic for data validation
+    "pydantic",
+    
+    # Retry logic
+    "tenacity",
+    
+    # Web scraping for PyPI history
+    "beautifulsoup4",
+    
+    # Async web server for timemachine
+    "tornado",
+    
+    # Type extensions
+    "typing-extensions",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["git_launch"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "docker.*",
+    "tornado.*",
+    "bs4.*",
+]
+ignore_missing_imports = true
+

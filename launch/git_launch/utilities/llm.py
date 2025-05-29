@@ -1,0 +1,158 @@
+"""
+LLM provider abstraction for various language model services.
+"""
+from langchain_openai import AzureChatOpenAI
+import os
+from functools import wraps
+from typing import List
+from langchain_core.messages import BaseMessage, HumanMessage
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+
+
+def logged_invoke(invoke_func):
+    """
+    Decorator to log LLM interactions to files.
+    
+    Args:
+        invoke_func: LLM invoke function to wrap
+        
+    Returns:
+        Wrapped function that logs inputs and outputs
+    """
+    @wraps(invoke_func)
+    def wrapper(self, messages: List[BaseMessage]):  
+        if self.log_folder is None: # if no log folder is specified, skip logging
+            response: BaseMessage = invoke_func(self, messages)
+            return response
+        
+        log_folder = self.log_folder  # Dynamically get the log folder from the instance
+        os.makedirs(log_folder, exist_ok=True)
+
+        existing_files = [
+            f for f in os.listdir(log_folder) if (f.split(".")[0]).isdigit()
+        ]
+        existing_numbers = [int(name.split(".")[0]) for name in existing_files]
+        next_number = max(existing_numbers) + 1 if existing_numbers else 0
+        log_file_path = os.path.join(log_folder, f"{next_number}.md")
+
+        response: BaseMessage = invoke_func(self, messages)
+
+        with open(log_file_path, "w") as f:
+            f.write("##### LLM INPUT #####\n")
+            f.write("\n".join([m.pretty_repr() for m in messages]))
+            f.write("\n##### LLM OUTPUT #####\n")
+            f.write(response.pretty_repr())
+        return response
+    return wrapper
+
+
+class LLMProvider:
+    """
+    Unified interface for different LLM providers with logging and retry capabilities.
+    
+    Supports Azure OpenAI, OpenAI, and Anthropic models with automatic logging
+    of interactions and built-in retry logic for robustness.
+    """
+    def __init__(self, llm_provider: str, log_folder: str | None = "./llm_logs", **kwargs):
+        """
+        Initialize LLM provider with specified backend.
+        
+        Args:
+            llm_provider (str): Provider name ("AOAI", "OpenAI", "Anthropic")
+            log_folder (str | None): Directory for interaction logs, None disables logging
+            **kwargs: Model configuration parameters (model_name, temperature, etc.)
+        """
+        self.llm_provider = llm_provider
+        self.log_folder = log_folder
+
+        llm_instance_map = {
+            "AOAI": AzureOpenAIModel,
+            "OpenAI": OpenAIModel,
+            "Anthropic": AnthropicModel,
+        }
+        if self.llm_provider not in llm_instance_map:
+            raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
+        self.llm_instance = llm_instance_map[self.llm_provider](**kwargs)
+
+    @logged_invoke
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential_jitter(initial=5, max=120, jitter=3)
+    )
+    def invoke(self, messages: List[BaseMessage]):
+        """
+        Invoke the LLM with messages, includes automatic retry and logging.
+        
+        Args:
+            messages (List[BaseMessage]): List of conversation messages
+            
+        Returns:
+            BaseMessage: LLM response message
+        """
+        return self.llm_instance.invoke(messages)
+
+
+class OpenAIModel:
+    """OpenAI model wrapper (not yet implemented)."""
+    def __init__(self, model_name: str, temperature: float = 0.0):
+        self.model_name = model_name
+        self.temperature = temperature
+        raise NotImplementedError("OpenAI model is not implemented yet.")
+
+
+class AnthropicModel:   
+    """Anthropic model wrapper (not yet implemented)."""
+    def __init__(self, model_name: str, temperature: float = 0.0):
+        self.model_name = model_name
+        self.temperature = temperature
+        raise NotImplementedError("Anthropic model is not implemented yet.")
+
+class AzureOpenAIModel:
+    """Azure OpenAI model implementation with token-based authentication."""
+    def __init__(self, model_name: str, temperature: float = 0.0):
+        """
+        Initialize Azure OpenAI model.
+        
+        Args:
+            model_name (str): Name of the Azure OpenAI model
+            temperature (float): Sampling temperature for responses
+        """
+        self.model_name = model_name
+        self.temperature = temperature
+
+        try:
+            from cloudgpt_aoai import get_openai_token_provider  # noqa: E501
+        except Exception:
+            from git_launch.cloudgpt_aoai import get_openai_token_provider  # noqa: E501
+
+        token_provider = get_openai_token_provider()
+        self.llm = AzureChatOpenAI(  # Directly initialize the instance
+            model=model_name,
+            temperature=temperature,
+            azure_ad_token_provider=token_provider,
+        )
+    
+    def invoke(self, messages: List[BaseMessage]):
+        """
+        Invoke Azure OpenAI model with messages.
+        
+        Args:
+            messages (List[BaseMessage]): Conversation messages
+            
+        Returns:
+            BaseMessage: Model response
+        """
+        return self.llm.invoke(messages)
+
+if __name__ == "__main__":
+    llm_provider = "AOAI"
+    model_config = {        
+        "model_name": "gpt-4o-20241120",
+        "temperature": 0.0,
+    }
+    llm = LLMProvider(llm_provider, log_folder="./llm_logs", **model_config)
+    messages = [HumanMessage(content="What is the capital of France?")]
+    res = llm.invoke(messages)
+    print(res)
+
+

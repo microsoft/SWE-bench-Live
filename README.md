@@ -12,6 +12,9 @@
   <a href="./LICENSE">
         <img alt="License" src="https://img.shields.io/github/license/SWE-bench/SWE-bench?style=for-the-badge">
   </a>
+  <a href="https://swe-bench-live.github.io">
+        <img alt="Leaderboard" src="https://img.shields.io/badge/leaderboard-%F0%9F%8F%86-1?style=for-the-badge">
+  </a>
   <a href="https://huggingface.co/datasets/SWE-bench-Live/SWE-bench-Live">
         <img alt="dataset" src="https://img.shields.io/badge/Dataset-HF-FFD21E.svg?style=for-the-badge&logo=huggingface&logoColor=FFD21E">
   </a>
@@ -25,6 +28,17 @@
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 The initial release of SWE-bench-Live includes **1,319** latest (created after 2024) task instances, each paired with an instance-level Docker image for test execution, covering **93** repositories.
+
+## 📁 Repository Structure
+
+```
+├── swebench/             # Core evaluation code (a fork of SWE-bench)
+├── launch/               # RepoLaunch tool for environment setup
+├── curation/             # Curation pipeline (scripts)
+├── assets/               # Repo assets
+├── ...
+└── README.md             # This file
+```
 
 ## 🚀 Set Up
 
@@ -45,7 +59,7 @@ python -m swebench.harness.run_evaluation \
     --run_id validate-gold
 ```
 
-## Evaluation
+## 🚥 Evaluation
 
 Evaluate your model on SWE-bench-Live.
 
@@ -61,10 +75,55 @@ python -m swebench.harness.run_evaluation \
 
 Instance-level Docker images are hosted on DockerHub.
 
+## 🐳 Dataset Curation
 
-## Acknowledgements
+In SWE-bench-Live, we propose an automated pipeline for curating SWE-bench-like dataset.
 
-We greatly thank the SWE-bench team for their efforts in building [SWE-bench](https://swebench.com).
+<p align="center">
+  <img src="assets/overview.png" alt="SWE-bench-Live Curation Pipeline" style="width: 100%; max-width: 800px;" />
+  <br>
+  <em>SWE-bench-Live Curation Pipeline</em>
+</p>
+
+### RepoLaunch
+
+We addresses the bottleneck of setting up execution environments by automating the process through an LLM-based agentic tool – [RepoLaunch](./launch/README.md). It can deliver a testable containerized environment for any given GitHub repository, thereby enabling test-based evaluation in SWE-bench-Live. 
+
+See [./launch](./launch/) folder for RepoLaunch code.
+
+
+
+## ⬆️ Submit your results
+
+Thank you for your interest in submitting results to SWE-bench-Live! We coordinate results submission via Pull Requests, see [SWE-bench-Live/submissions](https://github.com/swe-bench-live/submission) for instructions.
+
+## 🙏 Acknowledgements
+
+SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com). We extend our gratitude to the original SWE-bench team for their pioneering work in software engineering evaluation benchmarks.
+
+## 📚 Citation
+
+If you found the [SWE-bench-Live](https://swe-bench-live.github.io/) and [SWE-bench](https://swebench.com/) helpful for your research, please cite as follows
+
+```bibtex
+@misc{zhang2025swebenchlive,
+      title={SWE-bench Goes Live!}, 
+      author={...},
+      year={2025},
+      eprint={xxx},
+      archivePrefix={arXiv},
+      primaryClass={cs.SE},
+      url={https://arxiv.org/abs/xxx},
+}
+
+@inproceedings{jimenez2024swebench,
+     title={SWE-bench: Can Language Models Resolve Real-world Github Issues?},
+     author={Carlos E Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R Narasimhan},
+     booktitle={The Twelfth International Conference on Learning Representations},
+     year={2024},
+     url={https://openreview.net/forum?id=VTF8yNQM66}
+}
+```
 
 
 ## Contributing
