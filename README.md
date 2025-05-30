@@ -109,14 +109,11 @@ SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com)
 If you found the [SWE-bench-Live](https://swe-bench-live.github.io/) and [SWE-bench](https://swebench.com/) helpful for your research, please cite as follows
 
 ```bibtex
-@misc{zhang2025swebenchgoeslive,
-    title={SWE-bench Goes Live!}, 
-    author={Linghao Zhang and Shilin He and Chaoyun Zhang and Yu Kang and Bowen Li and Chengxing Xie and Junhao Wang and Maoquan Wang and Yufan Huang and Shengyu Fu and Elsie Nallipogu and Qingwei Lin and Yingnong Dang and Saravan Rajmohan and Dongmei Zhang},
-    year={2025},
-    eprint={2505.23419},
-    archivePrefix={arXiv},
-    primaryClass={cs.SE},
-    url={https://arxiv.org/abs/2505.23419}, 
+@article{zhang2025swebenchgoeslive,
+  title={SWE-bench Goes Live!},
+  author={Linghao Zhang and Shilin He and Chaoyun Zhang and Yu Kang and Bowen Li and Chengxing Xie and Junhao Wang and Maoquan Wang and Yufan Huang and Shengyu Fu and Elsie Nallipogu and Qingwei Lin and Yingnong Dang and Saravan Rajmohan and Dongmei Zhang},
+  journal={arXiv preprint arXiv:2505.23419},
+  year={2025}
 }
 
 @inproceedings{jimenez2024swebench,
