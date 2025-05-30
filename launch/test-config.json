@@ -1,7 +1,7 @@
 {
     "llm_provider_name": "OpenAI",
     "model_config": {        
-        "model_name": "gpt-4.1-20250414",
+        "model_name": "gpt-4o",
         "temperature": 0.0
     },
     "workspace_root": "playground/test/",

@@ -1,0 +1,17 @@
+{
+    "instance_id": "amoffat__sh-744",
+    "base_image": "python:3.10",
+    "setup_commands": [
+      "pip install poetry",
+      "poetry install --no-interaction",
+      "SH_TESTS_RUNNING=1 coverage run --source=sh -m pytest",
+      "poetry run SH_TESTS_RUNNING=1 coverage run --source=sh -m pytest",
+      "export SH_TESTS_RUNNING=1 && poetry run coverage run --source=sh -m pytest"
+    ],
+    "test_commands": [
+      "SH_TESTS_RUNNING=1 poetry run pytest -rA"
+    ],
+    "duration": 3,
+    "completed": true,
+    "exception": null
+}

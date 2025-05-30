@@ -1,7 +1,6 @@
 """
 LLM provider abstraction for various language model services.
 """
-from langchain_openai import AzureChatOpenAI
 import os
 from functools import wraps
 from typing import List
@@ -93,19 +92,72 @@ class LLMProvider:
 
 
 class OpenAIModel:
-    """OpenAI model wrapper (not yet implemented)."""
+    """OpenAI model implementation with API key authentication."""
     def __init__(self, model_name: str, temperature: float = 0.0):
+        """
+        Initialize OpenAI model.
+        
+        Args:
+            model_name (str): Name of the OpenAI model
+            temperature (float): Sampling temperature for responses
+        """
         self.model_name = model_name
         self.temperature = temperature
-        raise NotImplementedError("OpenAI model is not implemented yet.")
+
+        from langchain_openai import ChatOpenAI
+        
+        # Use environment variable OPENAI_API_KEY for authentication
+        self.llm = ChatOpenAI(
+            model=model_name,
+            temperature=temperature,
+        )
+    
+    def invoke(self, messages: List[BaseMessage]):
+        """
+        Invoke OpenAI model with messages.
+        
+        Args:
+            messages (List[BaseMessage]): Conversation messages
+            
+        Returns:
+            BaseMessage: Model response
+        """
+        return self.llm.invoke(messages)
 
 
 class AnthropicModel:   
-    """Anthropic model wrapper (not yet implemented)."""
+    """Anthropic model implementation with API key authentication."""
     def __init__(self, model_name: str, temperature: float = 0.0):
+        """
+        Initialize Anthropic model.
+        
+        Args:
+            model_name (str): Name of the Anthropic model
+            temperature (float): Sampling temperature for responses
+        """
         self.model_name = model_name
         self.temperature = temperature
-        raise NotImplementedError("Anthropic model is not implemented yet.")
+
+        from langchain_anthropic import ChatAnthropic
+        
+        # Use environment variable ANTHROPIC_API_KEY for authentication
+        self.llm = ChatAnthropic(
+            model=model_name,
+            temperature=temperature,
+        )
+    
+    def invoke(self, messages: List[BaseMessage]):
+        """
+        Invoke Anthropic model with messages.
+        
+        Args:
+            messages (List[BaseMessage]): Conversation messages
+            
+        Returns:
+            BaseMessage: Model response
+        """
+        return self.llm.invoke(messages)
+
 
 class AzureOpenAIModel:
     """Azure OpenAI model implementation with token-based authentication."""
@@ -120,16 +172,11 @@ class AzureOpenAIModel:
         self.model_name = model_name
         self.temperature = temperature
 
-        try:
-            from cloudgpt_aoai import get_openai_token_provider  # noqa: E501
-        except Exception:
-            pass
+        from langchain_openai import AzureChatOpenAI
 
-        token_provider = get_openai_token_provider()
         self.llm = AzureChatOpenAI(  # Directly initialize the instance
             model=model_name,
             temperature=temperature,
-            azure_ad_token_provider=token_provider,
         )
     
     def invoke(self, messages: List[BaseMessage]):

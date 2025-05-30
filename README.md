@@ -9,6 +9,9 @@
 </p>
 
 <p align="center">
+  <a href="https://arxiv.org/abs/2505.23419">
+        <img alt="paper" src="https://img.shields.io/badge/ArXiv-%23B31B1B?style=for-the-badge&logo=arXiv">
+  </a>
   <a href="./LICENSE">
         <img alt="License" src="https://img.shields.io/github/license/SWE-bench/SWE-bench?style=for-the-badge">
   </a>
