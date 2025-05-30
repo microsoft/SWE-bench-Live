@@ -123,7 +123,7 @@ class AzureOpenAIModel:
         try:
             from cloudgpt_aoai import get_openai_token_provider  # noqa: E501
         except Exception:
-            from git_launch.cloudgpt_aoai import get_openai_token_provider  # noqa: E501
+            pass
 
         token_provider = get_openai_token_provider()
         self.llm = AzureChatOpenAI(  # Directly initialize the instance

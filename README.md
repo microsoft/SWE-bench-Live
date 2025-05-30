@@ -106,22 +106,22 @@ SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com)
 If you found the [SWE-bench-Live](https://swe-bench-live.github.io/) and [SWE-bench](https://swebench.com/) helpful for your research, please cite as follows
 
 ```bibtex
-@misc{zhang2025swebenchlive,
-      title={SWE-bench Goes Live!}, 
-      author={...},
-      year={2025},
-      eprint={xxx},
-      archivePrefix={arXiv},
-      primaryClass={cs.SE},
-      url={https://arxiv.org/abs/xxx},
+@misc{zhang2025swebenchgoeslive,
+    title={SWE-bench Goes Live!}, 
+    author={Linghao Zhang and Shilin He and Chaoyun Zhang and Yu Kang and Bowen Li and Chengxing Xie and Junhao Wang and Maoquan Wang and Yufan Huang and Shengyu Fu and Elsie Nallipogu and Qingwei Lin and Yingnong Dang and Saravan Rajmohan and Dongmei Zhang},
+    year={2025},
+    eprint={2505.23419},
+    archivePrefix={arXiv},
+    primaryClass={cs.SE},
+    url={https://arxiv.org/abs/2505.23419}, 
 }
 
 @inproceedings{jimenez2024swebench,
-     title={SWE-bench: Can Language Models Resolve Real-world Github Issues?},
-     author={Carlos E Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R Narasimhan},
-     booktitle={The Twelfth International Conference on Learning Representations},
-     year={2024},
-     url={https://openreview.net/forum?id=VTF8yNQM66}
+    title={SWE-bench: Can Language Models Resolve Real-world Github Issues?},
+    author={Carlos E Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R Narasimhan},
+    booktitle={The Twelfth International Conference on Learning Representations},
+    year={2024},
+    url={https://openreview.net/forum?id=VTF8yNQM66}
 }
 ```
 
