@@ -35,6 +35,8 @@ dependencies = [
     "tenacity",
     "tqdm",
     "unidiff",
+    "fastcore",
+    "fire",
 ]
 
 [project.optional-dependencies]

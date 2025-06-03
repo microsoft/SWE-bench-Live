@@ -127,7 +127,7 @@ async def filter_repo(
 async def filter_main(
     input_file: str,
     output_file: str,
-    token_file: str,
+    tokens_file: str,
     min_total_pr_issues: int = 200,
     min_forks: int = 200,
     language: str = "Python",
@@ -135,7 +135,7 @@ async def filter_main(
     max_workers: int = 5,
 ):
     console = Console()
-    token_cycle = load_tokens(token_file)
+    token_cycle = load_tokens(tokens_file)
 
     with open(input_file, "r", encoding="utf-8") as f:
         repos = [json.loads(line) for line in f]

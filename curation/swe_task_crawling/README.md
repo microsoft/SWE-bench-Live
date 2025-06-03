@@ -1,0 +1,1 @@
+The scripts in this folder are provided by the [SWE-fixer](https://github.com/InternLM/SWE-Fixer) team. They optimized the original crawling scripts from SWE-bench, adopting a more robust approach to identify issue-PR pairs instead of relying on string matching.

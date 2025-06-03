@@ -428,3 +428,4 @@ share/python-wheels/
 MANIFEST
 
 *playground/
+*output/
