@@ -109,7 +109,7 @@ python to_swebench.py \
 
 ## Validation
 
-This step apply gold patches to instances, run test cases, and get `FAIL_TO_PASS` and `PASS_TO_PASS` test cases for each instance.
+In this step we apply gold patches to instances, run test cases, and get `FAIL_TO_PASS` and `PASS_TO_PASS` test cases for each instance.
 
 ```shell
 # cd in repo root
