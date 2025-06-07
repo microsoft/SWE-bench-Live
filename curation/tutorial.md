@@ -2,6 +2,15 @@
 
 This tutorial walks you through how to automatically curate new issue-resolving tasks from real GitHub issues.
 
+## Setup
+
+Dependencies: python, git, docker
+
+```shell
+pip install -e .
+pip install -e launch/.
+```
+
 ## Repositories Crawling
 
 This step crawls the initial source repo list, from which we find issues. You should prepare GitHub tokens in advance to unlock the API rate limit.
@@ -39,6 +48,8 @@ python filter_repo.py \
 This step crawls Issue-PR pairs created after the cut-off date from the given repositories, and converts them into SWE-bench-like task instances.
 
 ```shell
+mkdir -p job_status
+
 ./swe_task_crawling/run_get_tasks_pipeline.sh \
     --repos-jsonl output/filtered_repos.jsonl \
     --token-file tokens.txt \
@@ -74,6 +85,14 @@ Create a run config for RepoLaunch and save it in `config.json`:
 }
 ```
 
+Prepare your llm API Key.
+
+```shell
+export OPENAI_API_KEY=...
+
+export TAVILY_API_KEY=...
+```
+
 Fire your RepoLaunch run!
 ```shell
 # recommended in a tmux session, it takes long time
@@ -90,6 +109,8 @@ python to_swebench.py \
 
 ## Validation
 
+This step apply gold patches to instances, run test cases, and get `FAIL_TO_PASS` and `PASS_TO_PASS` test cases for each instance.
+
 ```shell
 # cd in repo root
 cd ..
@@ -100,4 +121,14 @@ python -m swebench.harness.run_validation \
     --max_workers 10 \
     --run_id tutorial-validation \
     --namespace starryzhang
+```
+
+## Production
+
+This step writes instances with both `FAIL_TO_PASS` and `PASS_TO_PASS` test cases to final dataset. The output is in `datasets/full-{today}.jsonl` and `datasets/lite-{today}.jsonl`.
+
+```shell
+python swebench/collect/produce/make_full.py
+
+python swebench/collect/produce/make_lite.py
 ```

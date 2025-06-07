@@ -92,6 +92,7 @@ StyleCopReport.xml
 *.tmp_proj
 *_wpftmp.csproj
 *.log
+*.out
 *.tlog
 *.vspscc
 *.vssscc
@@ -409,6 +410,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+**/venv
 build/
 develop-eggs/
 dist/
@@ -429,3 +431,11 @@ MANIFEST
 
 *playground/
 *output/
+*logs/
+**/job_status/
+*datasets/
+
+# personal keys
+**/.env
+**/tokens.txt
+**/*config.json
