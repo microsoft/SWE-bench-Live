@@ -1,29 +1,42 @@
 from __future__ import annotations
+import argparse
 import json
 import os
 from datetime import date
 from pathlib import Path
 
-# -------- configurable paths --------
-ROOT = Path("logs/run_evaluation/tutorial-validation/gold")
-OUTPUT_DIR = Path("datasets")
-TODAY = date.today().isoformat()          # e.g. "2025-06-07"
-OUT_PATH = OUTPUT_DIR / f"full-{TODAY}.jsonl"
-# ------------------------------------
-
 def main() -> None:
-    if not ROOT.is_dir():
-        raise SystemExit(f"Expected directory {ROOT} not found")
+    parser = argparse.ArgumentParser(description="Collect valid instances to create full dataset")
+    parser.add_argument(
+        "--input-dir", 
+        type=Path, 
+    )
+    parser.add_argument(
+        "--output-dir", 
+        type=Path, 
+    )
+    parser.add_argument(
+        "--output-file", 
+        type=Path,
+    )
+    
+    args = parser.parse_args()
+    
+    if args.output_file is None:
+        today = date.today().isoformat()
+        args.output_file = args.output_dir / f"full-{today}.jsonl"
+    
+    if not args.input_dir.is_dir():
+        raise SystemExit(f"Expected directory {args.input_dir} not found")
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # Overwrite existing file for today; change to "a" to append instead.
-    with OUT_PATH.open("w", encoding="utf-8") as outfile:
-        for instance_path in ROOT.rglob("instance.json"):
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    with args.output_file.open("w", encoding="utf-8") as outfile:
+        for instance_path in args.input_dir.rglob("instance.json"):
             try:
                 with instance_path.open(encoding="utf-8") as fp:
                     dct = json.load(fp)
             except (json.JSONDecodeError, OSError) as err:
-                # Corrupt or unreadable JSON—skip it.
                 print(f"Skipping {instance_path}: {err}")
                 continue
 
@@ -31,7 +44,7 @@ def main() -> None:
                 json.dump(dct, outfile, ensure_ascii=False)
                 outfile.write("\n")
 
-    print(f"Collected records written to {OUT_PATH.resolve()}")
+    print(f"Collected records written to {args.output_file.resolve()}")
 
 if __name__ == "__main__":
     main()

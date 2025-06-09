@@ -125,10 +125,14 @@ python -m swebench.harness.run_validation \
 
 ## Production
 
-This step writes instances with both `FAIL_TO_PASS` and `PASS_TO_PASS` test cases to final dataset. The output is in `datasets/full-{today}.jsonl` and `datasets/lite-{today}.jsonl`.
+This step writes valid instances with both `FAIL_TO_PASS` and `PASS_TO_PASS` test cases to final dataset.
 
 ```shell
-python swebench/collect/produce/make_full.py
+python swebench/collect/produce/make_full.py \
+    --input-dir logs/run_evaluation/tutorial-validation/gold \
+    --output-dir datasets
 
 python swebench/collect/produce/make_lite.py
 ```
+
+The default output files are `datasets/full-{today}.jsonl` and `datasets/lite-{today}.jsonl` where `{today}` is the current date in ISO format (e.g., `2025-01-15`).
