@@ -94,6 +94,9 @@ We addresses the bottleneck of setting up execution environments by automating t
 
 See [./launch](./launch/) folder for RepoLaunch code.
 
+> [!NOTE]
+> We provide a [tutorial](./curation/tutorial.md) to help you walk through the entire dataset curation process, starting from repository crawling.
+
 
 
 ## ⬆️ Submit your results
