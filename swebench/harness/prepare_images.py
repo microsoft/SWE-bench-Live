@@ -1,5 +1,7 @@
+import platform
 import docker
-import resource
+if platform.system() == "Linux":
+    import resource
 
 from argparse import ArgumentParser
 
