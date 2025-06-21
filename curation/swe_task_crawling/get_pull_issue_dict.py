@@ -49,12 +49,14 @@ def run_graphql_query(query, token):
                 f"GraphQL Query failed to run with status code {request.status_code}. {request.json()}"
             )
 
-    while True:
+    for i in range(3):
         try:
             return call_api(query, token)
         except requests.exceptions.RequestException as e:
             logger.error(f"Request failed: {e}")
             time.sleep(60)
+    logger.error("retry failed, giving up...")
+    return {}
 
 
 def get_closed_issue_events(owner, repo_name, token):
@@ -104,6 +106,8 @@ def get_closed_issue_events(owner, repo_name, token):
             owner=owner, repo_name=repo_name, after=after_cursor
         )
         result = run_graphql_query(query, token)
+        if not result:
+            break
         issues_data = result["data"]["repository"]["issues"]
         issues.extend(issues_data["edges"])
 

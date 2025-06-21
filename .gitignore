@@ -431,6 +431,7 @@ MANIFEST
 
 *playground/
 *output/
+**/output/
 *logs/
 **/job_status/
 *datasets/

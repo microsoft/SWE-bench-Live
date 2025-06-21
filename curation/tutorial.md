@@ -40,7 +40,8 @@ python filter_repo.py \
     --input_file output/raw_repos.jsonl \
     --output_file output/filtered_repos.jsonl \
     --tokens_file tokens.txt \
-    --language Python
+    --language Python \
+     --max_workers 20
 ```
 
 ## Issue-PR Pairs Crawling
