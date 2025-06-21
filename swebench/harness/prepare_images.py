@@ -1,7 +1,4 @@
-import platform
 import docker
-if platform.system() == "Linux":
-    import resource
 
 from argparse import ArgumentParser
 
@@ -78,7 +75,12 @@ def main(
         open_file_limit (int): Open file limit.
     """
     # Set open file limit
-    resource.setrlimit(resource.RLIMIT_NOFILE, (open_file_limit, open_file_limit))
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_NOFILE, (open_file_limit, open_file_limit))
+    except ImportError:
+        print("`resource` not available on your system; skipping open file limit setting")
+
     client = docker.from_env()
 
     # Filter out instances that were not specified
