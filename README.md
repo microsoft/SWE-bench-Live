@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="http://swe-bench.github.io">
+  <a href="http://swe-bench-live.github.io">
     <img src="assets/banner.png" style="height: 10em" alt="swe-bench-live" />
   </a>
 </p>
