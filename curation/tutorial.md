@@ -101,6 +101,16 @@ python -m git_launch.run --config-path config.json
 ```
 In RepoLaunch step, each instance that is successfully set up will be committed to a Docker image, with `starryzhang` as the default namespace. An example image key: `starryzhang/sweb.eval.x86_64.streamlink_1776_streamlink-6535`. The image name part (`sweb.eval.*`) follows the same naming convention as SWE-bench.
 
+<blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
+
+Note: Some instances would require many file descriptors. If you see "too many files open error", try
+```shell
+ulimit -a
+ulimit -n 32768
+```
+
+</blockquote>
+
 Export successfully set up instances to pre-validated SWE-bench-Live instances file:
 ```shell
 python to_swebench.py \
