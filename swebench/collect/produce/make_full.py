@@ -4,6 +4,26 @@ import json
 import os
 from datetime import date
 from pathlib import Path
+from unidiff import PatchSet
+
+def stats_with_unidiff(diff_text: str) -> dict[str, int]:
+    patch = PatchSet(diff_text)
+    files  = len(patch)
+    hunks  = sum(len(f) for f in patch)                      # each file is an iterable of hunks
+    lines  = sum(
+        1
+        for f in patch
+        for h in f
+        for l in h
+        if l.is_added or l.is_removed                      # ignore context lines
+    )
+    return {"files": files, "hunks": hunks, "lines": lines}
+
+
+def processing_one_instance(instance: dict):
+    instance["pull_number"] = str(instance["pull_number"])
+    instance["difficulty"] = stats_with_unidiff(instance["patch"])
+    return instance
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect valid instances to create full dataset")
@@ -41,6 +61,7 @@ def main() -> None:
                 continue
 
             if dct.get("FAIL_TO_PASS") and dct.get("PASS_TO_PASS"):
+                dct = processing_one_instance(dct)
                 json.dump(dct, outfile, ensure_ascii=False)
                 outfile.write("\n")
 

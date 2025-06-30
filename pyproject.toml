@@ -37,6 +37,7 @@ dependencies = [
     "unidiff",
     "fastcore",
     "fire",
+    "unidiff",
 ]
 
 [project.optional-dependencies]
