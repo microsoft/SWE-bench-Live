@@ -22,6 +22,7 @@ def stats_with_unidiff(diff_text: str) -> dict[str, int]:
 
 def processing_one_instance(instance: dict):
     instance["pull_number"] = str(instance["pull_number"])
+    instance["issue_numbers"] = [str(i) for i in instance["issue_numbers"]]
     instance["difficulty"] = stats_with_unidiff(instance["patch"])
     return instance
 
