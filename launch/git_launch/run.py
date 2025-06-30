@@ -149,7 +149,7 @@ def run_launch(config_path):
                     console.print(f"[green]Success![/green] {instance_id}")
                 progress.update(task, advance=1)
                 if need_prune:
-                    console.print("[blue]Try pruning Docker containers to reallocate storage...[/blue]")
+                    console.print("[blue]Try pruning Docker containers and build-logs to reallocate storage...[/blue]")
                     try:
                         subprocess.run(
                             ["docker", "container", "prune", "-f"],
@@ -158,8 +158,15 @@ def run_launch(config_path):
                             stderr=subprocess.PIPE,
                         )
                         console.print("[blue]Docker containers pruned.[/blue]")
+                        subprocess.run(
+                            ["docker", "builder", "prune", "-f"],
+                            check=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        console.print("[blue]Docker builder pruned.[/blue]")
                     except Exception as e:
-                        console.print(f"[red]Docker prune failed: {e}[/red]")
+                        console.print(f"[red]Docker cleaning failed: {e}[/red]")
 
     console.rule("[bold green] Finished all instances!")
 
