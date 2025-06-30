@@ -6,6 +6,7 @@ setting up environments and executing launches with progress tracking.
 """
 import json
 import threading
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -78,6 +79,8 @@ def run_launch(config_path):
         config_path (str): Path to the configuration JSON file
     """
     config = load_config(config_path)
+    counter = 0
+    prune_interval = config.prune_interval
 
     with open(config.dataset, "r") as f:
         dataset = [json.loads(line) for line in f]
@@ -123,6 +126,9 @@ def run_launch(config_path):
 
             for future in as_completed(futures):
                 status, instance_id, error = future.result()
+                with lock:
+                    counter += 1
+                    need_prune = (counter % prune_interval == 0)
                 if status == "skip":
                     console.print(
                         f"[yellow]Skipped[/yellow] {instance_id}: {error or ''}"
@@ -142,6 +148,25 @@ def run_launch(config_path):
                         )
                     console.print(f"[green]Success![/green] {instance_id}")
                 progress.update(task, advance=1)
+                if need_prune:
+                    console.print("[blue]Try pruning Docker containers and build-logs to reallocate storage...[/blue]")
+                    try:
+                        subprocess.run(
+                            ["docker", "container", "prune", "-f"],
+                            check=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        console.print("[blue]Docker containers pruned.[/blue]")
+                        subprocess.run(
+                            ["docker", "builder", "prune", "-f"],
+                            check=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        console.print("[blue]Docker builder pruned.[/blue]")
+                    except Exception as e:
+                        console.print(f"[red]Docker cleaning failed: {e}[/red]")
 
     console.rule("[bold green] Finished all instances!")
 

@@ -7,5 +7,6 @@
     "workspace_root": "playground/test/",
     "dataset": "test-dataset.jsonl",
     "first_N_repos": 1,
-    "overwrite": false
+    "overwrite": false,
+    "prune_interval": 500
 }

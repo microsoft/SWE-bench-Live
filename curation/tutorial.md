@@ -40,7 +40,8 @@ python filter_repo.py \
     --input_file output/raw_repos.jsonl \
     --output_file output/filtered_repos.jsonl \
     --tokens_file tokens.txt \
-    --language Python
+    --language Python \
+     --max_workers 20
 ```
 
 ## Issue-PR Pairs Crawling
@@ -100,6 +101,16 @@ python -m git_launch.run --config-path config.json
 ```
 In RepoLaunch step, each instance that is successfully set up will be committed to a Docker image, with `starryzhang` as the default namespace. An example image key: `starryzhang/sweb.eval.x86_64.streamlink_1776_streamlink-6535`. The image name part (`sweb.eval.*`) follows the same naming convention as SWE-bench.
 
+<blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
+
+Note: Some instances would require many file descriptors. If you see "too many files open error", try
+```shell
+ulimit -a
+ulimit -n 32768
+```
+
+</blockquote>
+
 Export successfully set up instances to pre-validated SWE-bench-Live instances file:
 ```shell
 python to_swebench.py \
@@ -132,7 +143,24 @@ python swebench/collect/produce/make_full.py \
     --input-dir logs/run_evaluation/tutorial-validation/gold \
     --output-dir datasets
 
-python swebench/collect/produce/make_lite.py
+# If you want to merge with old data we published
+python swebench/collect/produce/merge_with_old.py \
+    --input-dir "datasets/full-{today}.jsonl"
+
+python swebench/collect/produce/make_lite.py \
+    --start-month 2024-12 --end-month 2025-05 
+    # If you want to control month range to sample from
 ```
 
 The default output files are `datasets/full-{today}.jsonl` and `datasets/lite-{today}.jsonl` where `{today}` is the current date in ISO format (e.g., `2025-01-15`).
+
+To quickly check whether all instances can be solved by the gold patches (usually they do), run
+
+```shell
+python -m swebench.harness.run_evaluation \
+  --dataset_name datasets/full-{today}.jsonl \
+  --split full \
+  --predictions_path gold \
+  --run_id tutorial-validation \
+  --rewrite_reports true
+```
