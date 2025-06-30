@@ -143,7 +143,24 @@ python swebench/collect/produce/make_full.py \
     --input-dir logs/run_evaluation/tutorial-validation/gold \
     --output-dir datasets
 
-python swebench/collect/produce/make_lite.py
+# If you want to merge with old data we published
+python swebench/collect/produce/merge_with_old.py \
+    --input-dir "datasets/full-{today}.jsonl"
+
+python swebench/collect/produce/make_lite.py \
+    --start-month 2024-12 --end-month 2025-05 
+    # If you want to control month range to sample from
 ```
 
 The default output files are `datasets/full-{today}.jsonl` and `datasets/lite-{today}.jsonl` where `{today}` is the current date in ISO format (e.g., `2025-01-15`).
+
+To quickly check whether all instances can be solved by the gold patches (usually they do), run
+
+```shell
+python -m swebench.harness.run_evaluation \
+  --dataset_name datasets/full-{today}.jsonl \
+  --split full \
+  --predictions_path gold \
+  --run_id tutorial-validation \
+  --rewrite_reports true
+```

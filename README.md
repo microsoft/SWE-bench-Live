@@ -30,7 +30,15 @@
 
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
-The initial release of SWE-bench-Live includes **1,319** latest (created after 2024) task instances, each paired with an instance-level Docker image for test execution, covering **93** repositories.
+Newest dataset statistics:
+```
+Full-split date range: 2024.01.01 - 2025.06.20
+Full-split size: 1565
+Full Repo coverage: 164
+Lite-plit date range: 2024.12.01 - 2025.05.31
+Lite-split size: 300
+Lite Repo coverage: 106
+```
 
 ## 📁 Repository Structure
 

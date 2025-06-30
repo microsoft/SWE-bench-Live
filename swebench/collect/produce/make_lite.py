@@ -88,9 +88,9 @@ def main() -> None:
         default=42,
     )
     parser.add_argument(
-    "--start-month",
-    type=str,
-    help="Earliest month to **include** (format YYYY-MM, e.g. 2024-12)",
+        "--start-month",
+        type=str,
+        help="Earliest month to **include** (format YYYY-MM, e.g. 2024-12)",
     )
     parser.add_argument(
         "--end-month",
