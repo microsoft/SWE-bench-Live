@@ -221,7 +221,7 @@ def setup(max_steps: int, state: AgentState):
         logger.info("\n" + response.pretty_repr())
         messages.append(response)
         action = parse_setup_action(response.content)
-        if action.action == "command":
+        if action and action.action == "command":
             commands.append(action.args)
         observation = observation_for_setup_action(state, action)
         if observation.is_stop:
