@@ -18,11 +18,11 @@ Observation will be the result of running those actions.
 Project Structure: the structure of the project, including files and directories.
 Related Files: the content of related files of the project that may help you understand the project.
 Thought: you should always think about what to do
-Action: decide an action to take
+Action: <command>your bash command here</command> or <search>your search query</search> or other actions available
 Observation: the result of the action
 ... (this Thought/Action/Observation can repeat N times) ...
 Thought: I think the setup should be fine
-Action: stop the setup
+Action: <stop>stop the setup</stop>
 Answer: the final result
 
 Begin!
