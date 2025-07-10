@@ -32,7 +32,6 @@ class Config:
     overwrite: bool = (
         False  # whether to overwrite existing results, False will skip existing repos
     )
-    prune_interval: int = 500
 
 
 def load_config(config_path: str) -> Config:
@@ -64,5 +63,4 @@ def load_config(config_path: str) -> Config:
         max_workers=config_data.get("max_workers", 5),
         overwrite=config_data.get("overwrite", False),
         instance_id=config_data.get("instance_id", None),
-        prune_interval=config_data.get("prune_interval", 500),
     )
