@@ -64,8 +64,7 @@ class Verifier:
         for i in range(3):
             try:
                 response = self.llm.invoke(messages)
-                print(response, flush = True)
-                response = response.choices[0].message.content.strip().splitlines()
+                response = response.content.strip().splitlines()
                 break
             except Exception as e:
                 print(e, flush = True)
@@ -86,7 +85,7 @@ class Verifier:
         gold_patch = row["patch"]
         test_patch = row["test_patch"]
         description = row['problem_statement'] # currently row['hints_text'] should not be seen by agents
-        test_case_path = eval(row["FAIL_TO_PASS"])
+        test_case_path = row["FAIL_TO_PASS"]
         test_case = get_testcase(instance_id, repo_id, commit, test_case_path, test_patch)
         [print(i[0], i[1][:2000], i[1][-500:], sep = "\n") for i in test_case]
         category, reasoning = self.answer(description, test_case, gold_patch)
@@ -198,7 +197,12 @@ def _extract_test_context(source: str, selector: str, test_patch: str) -> str:
         return ""
     if not selector:
         return source
-    module = ast.parse(source)
+    try:
+        module = ast.parse(source)
+    except Exception as e:
+        print(e)
+        print("Cannot parse, returning...")
+        return ""
 
     # ── 1. split selector ──────────────────────────────────────────────
     parts = [p.split("[", 1)[0] for p in selector.split("::")]

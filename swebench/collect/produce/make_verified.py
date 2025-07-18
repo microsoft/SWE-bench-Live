@@ -1,9 +1,12 @@
 from __future__ import annotations
 import argparse
+from collections import defaultdict
+import datetime
 import json
 import random
 from pathlib import Path
-from utilities.verification import Verifier
+from datetime import date, datetime
+from swebench.collect.produce.utilities.verification import Verifier
 
 
 def parse_month(s: str) -> date:
@@ -44,8 +47,8 @@ def load_by_month(path: Path, start_bound, end_bound) -> dict[str, list[dict]]:
             groups[key].append(obj)
 
     result = []
-    for month in groups.leys():
-        result.append(groups[month])
+    for month in groups.keys():
+        result.extend(groups[month])
     return result
 
 def main() -> None:
@@ -68,7 +71,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["OpenAI", "AOAI", "Anthropic"]
+        choices=["OpenAI", "AOAI", "Anthropic"],
         help="The LLM provider",
     )
     parser.add_argument(
@@ -88,8 +91,6 @@ def main() -> None:
     )
     
     args = parser.parse_args()
-    
-        args = parser.parse_args()
 
     try:
         start_bound = parse_month(args.start_month) if args.start_month else None
@@ -129,7 +130,7 @@ def main() -> None:
             json.dump(obj, out, ensure_ascii=False)
             out.write("\n")
 
-    print(f"LLM decision ({len(log_file)} instances) written to {args.log_file.resolve()}")
+    print(f"LLM decision ({len(records)} instances) written to {args.log_file.resolve()}")
 
 if __name__ == "__main__":
     main()

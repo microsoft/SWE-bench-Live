@@ -8,6 +8,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
 
+
 class LLMProvider:
     """
     Unified interface for different LLM providers with logging and retry capabilities.
@@ -34,7 +35,6 @@ class LLMProvider:
             raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
         self.llm_instance = llm_instance_map[self.llm_provider](model)
 
-    @logged_invoke
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential_jitter(initial=5, max=120, jitter=3)
