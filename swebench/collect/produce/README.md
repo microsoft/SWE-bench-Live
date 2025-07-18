@@ -82,7 +82,7 @@ We additionally evaluated **GPT-4.1**:
 
 ## SWE-bench-Live-Verified and Agents' Performance on it
 
-The initial **Verified** subset includes **500 instances** filtered from the SWE-bench-Live-full set from **July 2024** to **April 2025**. The filter ratio is around 38%.
+The initial **Verified** subset includes **500 instances** filtered from the SWE-bench-Live-full set from **July 2024** to **April 2025**. The filter ratio is around 38%. See filtering details at [Live-Verified-log](https://drive.google.com/file/d/1iQzeszUDOdKiATftza-fJLULOCxpsjpK/view?usp=sharing).
 
 Due to time constraints and computational limitations, we simply retain instances from the Live-Lite subset (version 2025-04-20) that overlap with the Live-Verified subset to recalculate the success rates of various agents based on these remaining instances. After filtering, **174 instances** remain.
 
