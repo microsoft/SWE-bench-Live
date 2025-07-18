@@ -150,9 +150,20 @@ python swebench/collect/produce/merge_with_old.py \
 python swebench/collect/produce/make_lite.py \
     --start-month 2024-12 --end-month 2025-05 
     # If you want to control month range to sample from
+
+python -m swebench.collect.produce.make_verified \
+    --start-month 2024-06 --end-month 2025-05 \
+    --provider OpenAI --model o3-20250416 
+    # Optional --input-file datasets/full-{date}.jsonl
 ```
 
-The default output files are `datasets/full-{today}.jsonl` and `datasets/lite-{today}.jsonl` where `{today}` is the current date in ISO format (e.g., `2025-01-15`).
+The default output files are: 
+
+- `datasets/full-{today}.jsonl`
+- `datasets/lite-{today}.jsonl`
+- `datasets/verified-{today}.jsonl` & `datasets/verified-log-{today}.jsonl` (LLM's reasons to filter)
+
+where `{today}` is the current date in ISO format (e.g., `2025-01-15`).
 
 To quickly check whether all instances can be solved by the gold patches (usually they do), run
 
