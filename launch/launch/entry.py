@@ -3,10 +3,10 @@ Core launch functionality for setting up and executing repository environments.
 """
 import pprint
 
-from git_launch.agent.state import AgentState
-from git_launch.utilities.get_repo_structure import view_repo_structure
-from git_launch.utilities.utils import WorkSpace
-from git_launch.workflow import define_workflow
+from launch.agent.state import AgentState
+from launch.utilities.get_repo_structure import view_repo_structure
+from launch.utilities.utils import WorkSpace
+from launch.workflow import define_workflow
 
 
 def launch(instance: dict, workspace: WorkSpace):

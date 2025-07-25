@@ -5,7 +5,7 @@ An LLM-based agentic workflow that automates the process of setting up
 execution environments for any codebase.
 """
 
-from .launch import launch
+from .entry import launch
 from .run import run_launch
 
 __all__ = ["launch", "run_launch"]

@@ -13,7 +13,7 @@ from tornado.ioloop import IOLoop
 from tornado.routing import PathMatches
 from tornado.web import Application, RequestHandler
 
-from git_launch.runtime import SetupRuntime
+from launch.runtime import SetupRuntime
 
 MAIN_PYPI = "https://pypi.org/simple/"
 JSON_URL = "https://pypi.org/pypi/{package}/json"

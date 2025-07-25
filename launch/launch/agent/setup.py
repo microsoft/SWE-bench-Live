@@ -9,10 +9,11 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from git_launch.agent.prompt import ReAct_prompt
-from git_launch.agent.state import AgentState, auto_catch
-from git_launch.runtime import start_session
-from git_launch.utilities.timemachine import start_timemachine
+from launch.agent.action_parser import ActionParser
+from launch.agent.prompt import ReAct_prompt
+from launch.agent.state import AgentState, auto_catch
+from launch.runtime import start_session
+from launch.utilities.language_handlers import get_language_handler
 
 system_msg = """You are a developer. Your task is to install dependencies and set up a environment that is able to run the tests of the project.
 
@@ -23,9 +24,7 @@ system_msg = """You are a developer. Your task is to install dependencies and se
 
 The final objective is to successfully run the tests of the project.
 
-### Attention:
-- For Python project, you should make sure the package is installed from source in the editable mode before running tests (for example `pip install -e .`) to have a development environment.
-- For Python project, avoid use tox to run test if possible as it is designed specifically for CI. Read tox.ini file to find how to setup and run the test.
+{language_instructions}
 """
 
 # Omit the following requirement for now:
@@ -60,26 +59,31 @@ class SetupObservation(BaseModel):
     is_stop: bool = Field(False, description="Whether stop the setup loop")
 
 
-def parse_setup_action(response: str) -> SetupAction | None:
-    """
-    Parse setup action from LLM response text.
+class SetupActionParser(ActionParser):
+    """Parser for setup agent actions."""
     
-    Args:
-        response (str): Raw LLM response text
+    def parse(self, response: str) -> SetupAction | None:
+        """Parse setup action from LLM response text."""
+        response = self.clean_response(response)
         
-    Returns:
-        SetupAction | None: Parsed action or None if parsing failed
-    """
-    if "<command>" in response:
-        command = response.split("<command>")[1].split("</command>")[0].strip()
-        return SetupAction(action="command", args=command)
-    elif "<search>" in response:
-        query = response.split("<search>")[1].split("</search>")[0].strip()
-        return SetupAction(action="search", args=query)
-    elif "<stop>" in response:
-        return SetupAction(action="stop", args=None)
-    else:
+        command = self.extract_tag_content(response, "command")
+        if command:
+            return SetupAction(action="command", args=command)
+            
+        search = self.extract_tag_content(response, "search")
+        if search:
+            return SetupAction(action="search", args=search)
+            
+        if "<stop>" in response and "</stop>" in response:
+            return SetupAction(action="stop", args=None)
+            
         return None
+
+
+def parse_setup_action(response: str) -> SetupAction | None:
+    """Parse setup action from LLM response text."""
+    parser = SetupActionParser()
+    return parser.parse(response)
 
 
 def observation_for_setup_action(
@@ -113,7 +117,7 @@ Please using following format after `Action: ` to make a valid action choice:
 
 
 @auto_catch
-def start_bash_session(state: AgentState):
+def start_bash_session(state: AgentState) -> dict:
     """
     Start a Docker container with bash session for repository testing.
     
@@ -134,23 +138,22 @@ def start_bash_session(state: AgentState):
     shutil.rmtree(repo_root, ignore_errors=True)
     logger.info(f"Repo root in the host cleaned up: {repo_root}")
 
-    if state["language"] == "python":
-        # start pypi-timemachine server
-        if not state["date"]:
-            logger.info("No date specified, skip starting timemachine")
-            pypiserver = None
-        else:
-            logger.info(f"Starting pypi-timemachine server for date: {state['date']}")
-            pypiserver = start_timemachine(session, state["date"])
-            logger.info(f"pypi-timemachine server started at: {pypiserver.port}")
+    # Setup language-specific environment
+    language = state["language"]
+    language_handler = get_language_handler(language)
+    
+    logger.info(f"Setting up environment for language: {language}")
+    server = language_handler.setup_environment(session, state["date"])
+    if server:
+        logger.info(f"Language-specific server started")
     else:
-        raise NotImplementedError(f"Language {state['language']} is not supported yet")
+        logger.info("No language-specific server needed")
 
     assert (
         session is not None
     ), "Session is None, please check the whether the docker is running"
     return {
-        "pypiserver": pypiserver,
+        "pypiserver": server,  # Keep name for backward compatibility
         "session": session,
     }
 
@@ -159,7 +162,7 @@ SETUP_CONVERSATION_WINDOW = 5
 
 
 @auto_catch
-def setup(max_steps: int, state: AgentState):
+def setup(max_steps: int, state: AgentState) -> dict:
     """
     ReAct agent for environment setup through conversational command execution.
     
@@ -174,9 +177,17 @@ def setup(max_steps: int, state: AgentState):
     logger = state["logger"]
     repo_structure = state["repo_structure"]
 
+    # Get language-specific instructions
+    language = state["language"]
+    language_handler = get_language_handler(language)
+    language_instructions = language_handler.get_setup_instructions(state["base_image"])
+
     logger.info("-" * 10 + "Start setup conversation" + "-" * 10)
     messages = [
-        SystemMessage(system_msg.format(base_image=state["base_image"])),
+        SystemMessage(system_msg.format(
+            base_image=state["base_image"],
+            language_instructions=language_instructions
+        )),
         HumanMessage(
             ReAct_prompt.format(
                 tools=SetupAction.__doc__,
@@ -213,9 +224,6 @@ def setup(max_steps: int, state: AgentState):
 
         response = llm.invoke(input_messages)
 
-        # for reasoning model
-        if "<think>" in response.content:
-            response.content = response.content.split("</think>")[1]
 
         # print(response.pretty_repr())
         logger.info("\n" + response.pretty_repr())

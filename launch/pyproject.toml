@@ -1,76 +1,30 @@
 [project]
 name = "launch"
 version = "0.1.0"
-description = "RepoLaunch - Turning Any Codebase into Testable Sandbox Environment"
+description = "RepoLaunch"
 readme = "README.md"
-requires-python = ">=3.10"
-authors = [
-    { name = "SWE-bench-Live Team" }
-]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
+requires-python = ">=3.12"
 dependencies = [
-    "rich",
-    "docker",
-    "requests",
-    "GitPython",
-    
-    # LangChain ecosystem
-    "langchain",
-    "langchain-core",
-    "langchain-community",
-    "langchain-openai",
-    "langgraph",
-    
-    # Pydantic for data validation
-    "pydantic",
-    
-    # Retry logic
-    "tenacity",
-    
-    # Web scraping for PyPI history
-    "beautifulsoup4",
-    
-    # Async web server for timemachine
-    "tornado",
-    
-    # Type extensions
-    "typing-extensions",
+    "beautifulsoup4>=4.13.4",
+    "docker>=7.1.0",
+    "fire>=0.7.0",
+    "gitpython>=3.1.44",
+    "langchain>=0.3.26",
+    "langchain-community>=0.3.27",
+    "langchain-core>=0.3.68",
+    "langchain-openai>=0.3.27",
+    "langgraph>=0.5.2",
+    "pydantic>=2.11.7",
+    "requests>=2.32.4",
+    "rich>=14.0.0",
+    "tenacity>=9.1.2",
+    "tornado>=6.5.1",
+    "typing-extensions>=4.14.1",
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["git_launch"]
-
-[tool.black]
-line-length = 88
-target-version = ['py310']
-
-[tool.isort]
-profile = "black"
-line_length = 88
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = [
-    "docker.*",
-    "tornado.*",
-    "bs4.*",
-]
-ignore_missing_imports = true
-
+[tool.setuptools]
+packages = ["launch"]

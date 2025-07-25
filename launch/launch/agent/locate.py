@@ -5,8 +5,8 @@ import os
 
 from langchain.schema import HumanMessage
 
-from git_launch.agent.state import AgentState, auto_catch
-from git_launch.utilities.get_repo_structure import view_repo_structure
+from launch.agent.state import AgentState, auto_catch
+from launch.utilities.get_repo_structure import view_repo_structure
 
 prompt = """Given this repository structure:
 ------ BEGIN REPOSITORY STRUCTURE ------
@@ -40,10 +40,10 @@ or
 Choose either Yes or No, Yes means this file IS relevant for setting up a dev env for the repository.
 """
 
-THRESHOLD = 128 * 1000 * 3
+THRESHOLD = 128 * 1000 * 2
 
 @auto_catch
-def locate_related_file(state: AgentState) -> AgentState:
+def locate_related_file(state: AgentState) -> dict:
     """
     Analyze repository structure to identify files relevant for environment setup.
     
@@ -67,8 +67,6 @@ def locate_related_file(state: AgentState) -> AgentState:
         )
     
     response = llm.invoke([locate_prompt])
-    if "<think>" in response.content:
-        response.content = response.content.split("</think>")[1]
     potential_files = [
         line.split("<file>")[1].split("</file>")[0].strip()
         for line in response.content.split("\n")
@@ -92,15 +90,12 @@ def locate_related_file(state: AgentState) -> AgentState:
             continue
         if os.path.isdir(path):
             continue
-        with open(path, "r") as f:
-            try:
-                content = f.read()
-            except Exception as e:
-                logger.info(f"Error reading file {file}: {e}")
-                continue
-        
-        if len(content) > THRESHOLD:
-            content = content[:THRESHOLD]
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read(THRESHOLD)
+        except Exception as e:
+            logger.info(f"Error reading file {file}: {e}")
+            continue
 
         file_info = f"""------ START FILE {file} ------
 {content}
@@ -111,8 +106,6 @@ def locate_related_file(state: AgentState) -> AgentState:
         except Exception:
             logger.error(f"Error determining file: {file}")
             continue
-        if "<think>" in response.content:
-            response.content = response.content.split("</think>")[1]
         logger.info(f"File: {file} - {response.content}")
         if "<rel>Yes</rel>" in response.content:
             docs += f"File: {file}\n```\n"
@@ -132,7 +125,7 @@ def locate_related_file(state: AgentState) -> AgentState:
 
 
 if __name__ == "__main__":
-    from git_launch.agent.state import AgentState
+    from launch.agent.state import AgentState
 
     state = AgentState()
     locate_related_file(state)

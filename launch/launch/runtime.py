@@ -130,15 +130,10 @@ class CommandResult:
         Returns:
             str: Formatted observation with output and context
         """
-        # clean ansii color codes
-        def strip_ansi_escape_codes(text):
-            ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-            return ansi_escape.sub("", text).replace("\r", "")
-
-        output = self.output.replace(
-            "\r", ""
-        )  # remove \r to avoid issues with printing in terminal
-        output = strip_ansi_escape_codes(output)
+        # compile regex once for efficiency
+        ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        
+        output = ANSI_ESCAPE.sub("", self.output).replace("\r", "")
 
         if len(output) > 1024 * 8 and strip:
             output = (
@@ -202,7 +197,11 @@ class SetupRuntime:
                 if not output:
                     break
                 self.output_queue.put(output)
-            except Exception:
+            except (OSError, ConnectionError) as e:
+                print(f"Connection error in _stream_output: {e}")
+                break
+            except Exception as e:
+                print(f"Unexpected error in _stream_output: {e}")
                 break
 
     def _start_output_thread(self):
@@ -244,14 +243,13 @@ class SetupRuntime:
             return pane_content[: ps1_matches[0].start()]
         elif len(ps1_matches) == 0:
             return pane_content
-        combined_output = ""
+        output_segments = []
         for i in range(len(ps1_matches) - 1):
-            # Extract content between current and next PS1 prompt
             output_segment = pane_content[
                 ps1_matches[i].end() + 1 : ps1_matches[i + 1].start()
             ]
-            combined_output += output_segment + "\n"
-        return combined_output
+            output_segments.append(output_segment)
+        return "\n".join(output_segments) + "\n" if output_segments else ""
 
     def send_command(self, command: str, timeout: float = 20 * 60) -> CommandResult:
         if not command.endswith("\n"):
@@ -322,8 +320,7 @@ class SetupRuntime:
         self.container.put_archive(path=dest, data=tar_stream.read())
         self.send_command(f"chown -R root:root {dest}")
 
-    def cleanup(self):
-        # stop and remove the container
+    def cleanup(self) -> None:
         if self.stopped:
             return
         try:
@@ -331,11 +328,7 @@ class SetupRuntime:
             self.container.remove(force=True)
             self.stopped = True
         except Exception as e:
-            import traceback
-
-            print("Failed to stop container")
-            print(traceback.format_exc())
-            print(e)
+            print(f"Failed to stop container: {e}")
 
     def commit(self, image_name: str, tag: str = "latest", push: bool = False) -> str:
         self.container.commit(

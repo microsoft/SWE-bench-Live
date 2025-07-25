@@ -1,5 +1,5 @@
 """
-Logging utilities for git_launch operations with file and console output.
+Logging utilities for launch operations with file and console output.
 """
 import logging
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 
-def setup_logger(instance_id: str, log_file: Path, printing: bool = True):
+def setup_logger(instance_id: str, log_file: Path, printing: bool = True) -> logging.Logger:
     """
     Setup logger with file and optional console output for an instance.
     
@@ -41,7 +41,7 @@ def setup_logger(instance_id: str, log_file: Path, printing: bool = True):
     return logger
 
 
-def clean_logger(logger: logging.Logger | str):
+def clean_logger(logger: logging.Logger | str) -> None:
     """
     Clean up logger handlers to prevent resource leaks.
     

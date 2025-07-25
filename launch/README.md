@@ -19,7 +19,7 @@ We provide an example input file `test-dataset.jsonl` and a run config `test-con
 cd launch
 pip install -e .
 
-python -m git_launch.run --config-path test-config.json
+python -m launch.run --config-path test-config.json
 ```
 
 ## Data Schema
@@ -33,8 +33,8 @@ For the input data used to set up the environment, we require the following fiel
 | `repo`       | Full name of the repository                                                 |
 | `base_commit`| Commit to check out                                                         |
 | `instance_id`| Unique identifier of the instance                                           |
+| `language`   | Main language of the repo |
 | `created_at` | (Optional) Creation time of the instance, used to support time-aware environment setup |
-| `language`   | (Optional) Main language of the repo |
 
 ### Run Config
 

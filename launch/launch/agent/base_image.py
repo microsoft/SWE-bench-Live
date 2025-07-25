@@ -3,17 +3,12 @@ Base Docker image selection agent for repository environment setup.
 """
 from langchain.schema import HumanMessage
 
-from git_launch.agent.state import AgentState, auto_catch
-
-lang_to_candidate_images = {
-    "python": [f"python:3.{v}" for v in range(6, 12)],
-    "rust": [f"rust:1.7{v}" for v in range(0, 10)],
-    "javascript": [f"node:1{v}" for v in range(0, 10)],
-}
+from launch.agent.state import AgentState, auto_catch
+from launch.utilities.language_handlers import get_language_handler
 
 
 @auto_catch
-def select_base_image(state: AgentState) -> AgentState:
+def select_base_image(state: AgentState) -> dict:
     """
     Select appropriate base Docker image based on repository analysis.
     
@@ -28,8 +23,11 @@ def select_base_image(state: AgentState) -> AgentState:
     """
     llm = state["llm"]
     logger = state["logger"]
-    langauge = state["language"]
-    candidate_images = lang_to_candidate_images[langauge]
+    language = state["language"]
+    
+    # Get language handler and candidate images
+    language_handler = get_language_handler(language)
+    candidate_images = language_handler.base_images
     messages = [
         HumanMessage(
             content=f"""Based on related file:
@@ -51,8 +49,6 @@ Wrap the image name in a block like <image>ubuntu:20.04</image> to indicate your
     while not base_image or trials < 5:
         trials += 1
         response = llm.invoke(messages)
-        if "<think>" in response.content:
-            response.content = response.content.split("</think>")[1]
         if "<image>" in response.content:
             image = response.content.split("<image>")[1].split("</image>")[0]
             if image in candidate_images:

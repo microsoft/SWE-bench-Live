@@ -1,5 +1,5 @@
 """
-Configuration management for git_launch operations.
+Configuration management for launch operations.
 """
 import json
 from dataclasses import dataclass

@@ -8,15 +8,16 @@ from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
-from git_launch.agent.base_image import select_base_image
-from git_launch.agent.locate import locate_related_file
-from git_launch.agent.setup import setup, start_bash_session
-from git_launch.agent.state import AgentState, auto_catch
-from git_launch.agent.verify import verify
+from launch.agent.base_image import select_base_image
+from launch.agent.locate import locate_related_file
+from launch.agent.setup import setup, start_bash_session
+from launch.agent.state import AgentState, auto_catch
+from launch.agent.verify import verify
+from launch.utilities.language_handlers import get_language_handler
 
 
 @auto_catch
-def save_result(state: AgentState):
+def save_result(state: AgentState) -> dict:
     """
     Save the launch result to a JSON file and commit successful setup to Docker image.
     
@@ -67,9 +68,15 @@ def save_result(state: AgentState):
 
     session = state["session"]
 
-    pypiserver = state["pypiserver"]
-    if pypiserver:
-        pypiserver.stop()
+    # Clean up language-specific resources
+    language = state["language"]
+    language_handler = get_language_handler(language)
+    server = state["pypiserver"]  # Keep name for backward compatibility
+    
+    try:
+        language_handler.cleanup_environment(session, server)
+    except Exception as e:
+        logger.warning(f"Failed to cleanup language environment: {e}")
 
     if state.get("success", False):
         logger.info("Setup completed successfully, now commit into swebench image.")
@@ -80,18 +87,16 @@ def save_result(state: AgentState):
         key = f"sweb.eval.{ARCH}.{instance_id.lower()}"
         key = f"{NAMESPACE}/{key}".replace("__", "_1776_")
 
-        # kind of important...
-        session.send_command("pip config unset global.index-url")
-        session.send_command("pip config unset global.trusted-host")
+        # try:
+        #     session.commit(image_name=key, push=False)
+        #     logger.info(f"Image {key} committed successfully.")
+        # except Exception as e:
+        #     logger.error(f"Failed to commit image: {e}")
 
-        try:
-            session.commit(image_name=key, push=False)
-            logger.info(f"Image {key} committed successfully.")
-        except Exception as e:
-            logger.error(f"Failed to commit image: {e}")
-            print(f"Failed to commit image: {key}")
-
-    session.cleanup()
+    try:
+        session.cleanup()
+    except Exception as e:
+        logger.error(f"Failed to cleanup session: {e}")
 
     return {
         "session": None,

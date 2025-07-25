@@ -19,19 +19,22 @@ def logged_invoke(invoke_func):
         Wrapped function that logs inputs and outputs
     """
     @wraps(invoke_func)
-    def wrapper(self, messages: List[BaseMessage]):  
-        if self.log_folder is None: # if no log folder is specified, skip logging
+    def wrapper(self, messages: List[BaseMessage]) -> BaseMessage:  
+        if self.log_folder is None:
             response: BaseMessage = invoke_func(self, messages)
             return response
         
         log_folder = self.log_folder  # Dynamically get the log folder from the instance
         os.makedirs(log_folder, exist_ok=True)
 
-        existing_files = [
-            f for f in os.listdir(log_folder) if (f.split(".")[0]).isdigit()
-        ]
-        existing_numbers = [int(name.split(".")[0]) for name in existing_files]
-        next_number = max(existing_numbers) + 1 if existing_numbers else 0
+        try:
+            existing_files = [
+                f for f in os.listdir(log_folder) if f.split(".")[0].isdigit()
+            ]
+            existing_numbers = [int(name.split(".")[0]) for name in existing_files]
+            next_number = max(existing_numbers) + 1 if existing_numbers else 0
+        except (OSError, ValueError):
+            next_number = 0
         log_file_path = os.path.join(log_folder, f"{next_number}.md")
 
         response: BaseMessage = invoke_func(self, messages)
@@ -75,10 +78,10 @@ class LLMProvider:
 
     @logged_invoke
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential_jitter(initial=5, max=120, jitter=3)
+        stop=stop_after_attempt(3),
+        wait=wait_exponential_jitter(initial=5, max=10, jitter=3)
     )
-    def invoke(self, messages: List[BaseMessage]):
+    def invoke(self, messages: List[BaseMessage]) -> BaseMessage:
         """
         Invoke the LLM with messages, includes automatic retry and logging.
         
@@ -108,11 +111,12 @@ class OpenAIModel:
         
         # Use environment variable OPENAI_API_KEY for authentication
         self.llm = ChatOpenAI(
+            # base_url="https://openrouter.ai/api/v1",
             model=model_name,
             temperature=temperature,
         )
     
-    def invoke(self, messages: List[BaseMessage]):
+    def invoke(self, messages: List[BaseMessage]) -> BaseMessage:
         """
         Invoke OpenAI model with messages.
         
@@ -146,7 +150,7 @@ class AnthropicModel:
             temperature=temperature,
         )
     
-    def invoke(self, messages: List[BaseMessage]):
+    def invoke(self, messages: List[BaseMessage]) -> BaseMessage:
         """
         Invoke Anthropic model with messages.
         
@@ -179,7 +183,7 @@ class AzureOpenAIModel:
             temperature=temperature,
         )
     
-    def invoke(self, messages: List[BaseMessage]):
+    def invoke(self, messages: List[BaseMessage]) -> BaseMessage:
         """
         Invoke Azure OpenAI model with messages.
         
@@ -201,5 +205,3 @@ if __name__ == "__main__":
     messages = [HumanMessage(content="What is the capital of France?")]
     res = llm.invoke(messages)
     print(res)
-
-

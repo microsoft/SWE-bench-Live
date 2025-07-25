@@ -18,9 +18,9 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-from git_launch.launch import launch
-from git_launch.utilities.config import load_config
-from git_launch.utilities.utils import check_workspace_exists, prepare_workspace
+from launch.entry import launch
+from launch.utilities.config import load_config
+from launch.utilities.utils import check_workspace_exists, prepare_workspace
 
 lock = threading.Lock()
 

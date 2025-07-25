@@ -8,9 +8,9 @@ from pathlib import Path
 
 from git import Repo
 
-from git_launch.utilities.config import Config
-from git_launch.utilities.llm import LLMProvider
-from git_launch.utilities.logger import setup_logger
+from launch.utilities.config import Config
+from launch.utilities.llm import LLMProvider
+from launch.utilities.logger import setup_logger, clean_logger
 
 
 @dataclass
@@ -38,6 +38,13 @@ class WorkSpace:
     llm_log_folder: Path
     date: str = None
     language: str = "python"
+    
+    def cleanup(self) -> None:
+        """Clean up workspace resources."""
+        try:
+            clean_logger(self.logger)
+        except Exception as e:
+            print(f"Failed to clean logger: {e}")
 
 
 def prepare_repo(instance: dict, repo_root: Path) -> Path:
@@ -106,9 +113,13 @@ def prepare_workspace(
     logger = setup_logger(
         instance["instance_id"], log_file, printing=config.print_to_console
     )
+    
+    language = instance.get("language", "python").lower()
+    logger.info(f"Using language: {language}")
+    
     return WorkSpace(
         instance_id=instance["instance_id"],
-        language=instance["language"] if "language" in instance else "python",
+        language=language,
         repo_root=repo_root,
         instance_path=instance_path,
         result_path=result_path,

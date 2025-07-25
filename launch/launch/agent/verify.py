@@ -6,9 +6,10 @@ from typing import Any, Literal
 from langchain.schema import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from git_launch.agent.prompt import ReAct_prompt
-from git_launch.agent.state import AgentState, auto_catch
-from git_launch.runtime import SetupRuntime
+from launch.agent.action_parser import ActionParser
+from launch.agent.prompt import ReAct_prompt
+from launch.agent.state import AgentState, auto_catch
+from launch.runtime import SetupRuntime
 
 system_msg = """You are a developer. Your task is to verify whether the environment for the given project is set up correctly. Your colleague has set up a Docker environment for the project. You need to verify if it can successfully run the tests of the project.
 - You interact with a Bash session inside this container.
@@ -61,24 +62,28 @@ class VerifyObservation(BaseModel):
     content: str = Field("", description="The content of the observation")
 
 
-def parse_verify_action(response: str) -> VerifyAction | None:
-    """
-    Parse verification action from LLM response text.
+class VerifyActionParser(ActionParser):
+    """Parser for verification agent actions."""
     
-    Args:
-        response (str): Raw LLM response text
+    def parse(self, response: str) -> VerifyAction | None:
+        """Parse verification action from LLM response text."""
+        response = self.clean_response(response)
         
-    Returns:
-        VerifyAction | None: Parsed action or None if parsing failed
-    """
-    if "<command>" in response:
-        command = response.split("<command>")[1].split("</command>")[0].strip()
-        return VerifyAction(action="command", args=command)
-    elif "<issue>" in response:
-        issue = response.split("<issue>")[1].split("</issue>")[0].strip().lower()
-        return VerifyAction(action="issue", args=issue)
-    else:
+        command = self.extract_tag_content(response, "command")
+        if command:
+            return VerifyAction(action="command", args=command)
+            
+        issue = self.extract_tag_content(response, "issue")
+        if issue:
+            return VerifyAction(action="issue", args=issue.lower())
+            
         return None
+
+
+def parse_verify_action(response: str) -> VerifyAction | None:
+    """Parse verification action from LLM response text."""
+    parser = VerifyActionParser()
+    return parser.parse(response)
 
 
 def observation_for_verify_action(
@@ -114,7 +119,7 @@ VERIFY_CONVERSATION_WINDOW = 10
 
 
 @auto_catch
-def verify(max_steps: int, state: AgentState):
+def verify(max_steps: int, state: AgentState) -> dict:
     """
     ReAct agent for environment verification through test command execution.
     
@@ -162,9 +167,6 @@ def verify(max_steps: int, state: AgentState):
                 messages[:prefix_messages] + messages[-VERIFY_CONVERSATION_WINDOW:]
             )
         response = llm.invoke(input_messages)
-        # for reasoning model
-        if "<think>" in response.content:
-            response.content = response.content.split("</think>")[1]
         # print(response.pretty_repr())
         logger.info(response.pretty_repr())
         messages.append(response)

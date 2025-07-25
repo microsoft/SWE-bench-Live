@@ -17,9 +17,9 @@ from langchain_core.messages import (
 from langgraph.graph.message import add_messages
 from typing_extensions import Literal, Self, TypedDict
 
-from git_launch.runtime import SetupRuntime
-from git_launch.utilities.timemachine import PyPiServer
-from git_launch.utilities.llm import LLMProvider
+from launch.runtime import SetupRuntime
+from launch.utilities.timemachine import PyPiServer
+from launch.utilities.llm import LLMProvider
 
 
 class State(TypedDict):
@@ -68,7 +68,7 @@ class AgentState(State):
     @classmethod
     def create(
         cls,
-        instance: str,
+        instance: dict,
         llm: LLMProvider,
         logger: Logger,
         language: LANGUAGE,
@@ -117,33 +117,30 @@ class AgentState(State):
             base_image=None,
             session=None,
             start_time=time.time(),
-            verified=None,
             pypiserver=None,
+            current_issue=None,
+            success=None,
             trials=0,
             exception=None,
             debug=debug,
         )
 
 
-# TODO: more strict type hints
-def auto_catch(func: Callable) -> Callable:
+def auto_catch(func: Callable[..., dict]) -> Callable[..., dict]:
     """
     Decorator to automatically catch exceptions in workflow functions.
     
     Args:
-        func (Callable): Function to wrap with exception handling
+        func: Function to wrap with exception handling
         
     Returns:
-        Callable: Wrapped function that returns exception in state on error
+        Wrapped function that returns exception in state on error
     """
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> dict:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            # import traceback
-
-            # print(traceback.format_exc())
             return {"exception": e}
 
     return wrapper
