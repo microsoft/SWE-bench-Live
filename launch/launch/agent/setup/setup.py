@@ -4,7 +4,7 @@ Environment setup agent for repository testing environment preparation.
 import json
 import shutil
 import time
-from typing import Any, Literal
+from typing import Any, Literal, ClassVar  
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -12,8 +12,9 @@ from pydantic import BaseModel, Field
 from launch.agent.action_parser import ActionParser
 from launch.agent.prompt import ReAct_prompt
 from launch.agent.state import AgentState, auto_catch
-from launch.runtime import start_session
+from launch.core.runtime import SetupRuntime
 from launch.utilities.language_handlers import get_language_handler
+
 
 system_msg = """You are a developer. Your task is to install dependencies and set up a environment that is able to run the tests of the project.
 
@@ -32,19 +33,36 @@ The final objective is to successfully run the tests of the project.
 
 
 class SetupAction(BaseModel):
-    """
-    Command: run a command in the bash, reply with following format, your command should not require sudo or interactive input:
-        <command>bash command</command>
-        e.g. install build-essential: <command>apt-get install -y build-essential</command>
-        e.g. view file content: <command>cat README.md</command>
-    Search: search the web for if you need some information, generate query and reply with following format:
-        <search>the search query</search>
-        e.g. <search>how to fix 'No module named setuptools'</search>
-        e.g. <search>how to install python3 on ubuntu</search>
-        e.g. <search>how to create development environment for python3</search>
-    Stop: stop the setup loop once you think the setup is complete, reply with following format:
-        <stop></stop>
-    """
+    prompt: ClassVar[dict] = {
+        "linux":
+        """
+        Command: run a command in the bash, reply with following format, your command should not require sudo or interactive input:
+            <command>bash command</command>
+            e.g. install build-essential: <command>apt-get install -y build-essential</command>
+            e.g. view file content: <command>cat README.md</command>
+        Search: search the web for if you need some information, generate query and reply with following format:
+            <search>the search query</search>
+            e.g. <search>how to fix 'No module named setuptools'</search>
+            e.g. <search>how to install python3 on ubuntu</search>
+            e.g. <search>how to create development environment for python3</search>
+        Stop: stop the setup loop once you think the setup is complete, reply with following format:
+            <stop></stop>
+        """,
+        "windows":
+        """
+        Command: run a command in the windows powershell, reply with following format, your command should not require admin privilage or interactive input:
+            <command>powershell command</command>
+            e.g. install build-essential: <command>choco install -y ...</command>
+            e.g. view file content: <command>cat README.md</command>
+        Search: search the web for if you need some information, generate query and reply with following format:
+            <search>the search query</search>
+            e.g. <search>how to fix 'No module named setuptools'</search>
+            e.g. <search>how to install python3 on ubuntu</search>
+            e.g. <search>how to create development environment for python3</search>
+        Stop: stop the setup loop once you think the setup is complete, reply with following format:
+            <stop></stop>
+        """,
+    }
 
     action: Literal["command", "search", "stop"] = Field(
         "command", description="The action type"
@@ -102,7 +120,7 @@ def observation_for_setup_action(
     if not action or not action.action:
         content = f"""\
 Please using following format after `Action: ` to make a valid action choice:
-{SetupAction.__doc__}
+{SetupAction.prompt[state['platform']]}
 """
         return SetupObservation(content=content, is_stop=False)
     if action.action == "command":
@@ -131,7 +149,7 @@ def start_bash_session(state: AgentState) -> dict:
     repo_root = state["repo_root"]
     logger = state["logger"]
     logger.info(f"Starting bash session in container based on image: {base_image}")
-    session = start_session(base_image, state["instance"])
+    session = SetupRuntime.from_base_image(base_image, state["instance"], platform = state["platform"])
     logger.info(f"Session started: {session}")
 
     # clean up repository in the host
@@ -158,11 +176,11 @@ def start_bash_session(state: AgentState) -> dict:
     }
 
 
-SETUP_CONVERSATION_WINDOW = 5
+SETUP_CONVERSATION_WINDOW = 40
 
 
 @auto_catch
-def setup(max_steps: int, state: AgentState) -> dict:
+def setup(state: AgentState, max_steps: int, timeout: int = 30) -> dict:
     """
     ReAct agent for environment setup through conversational command execution.
     
@@ -177,10 +195,26 @@ def setup(max_steps: int, state: AgentState) -> dict:
     logger = state["logger"]
     repo_structure = state["repo_structure"]
 
+    logger.info(f"setup state: {state.get("success" , "false")}, {state["trials"]}, {state["exception"]} ... ")
+    
     # Get language-specific instructions
     language = state["language"]
     language_handler = get_language_handler(language)
-    language_instructions = language_handler.get_setup_instructions(state["base_image"])
+    language_instructions = language_handler.get_setup_instructions(state["base_image"], platform=state["platform"])
+    hints = "\n\n"
+    action_hints = state["instance"].get("hints", "")
+    action_hints = f"\nAdditional hints from user that may help you set up / test the repo: <check>{action_hints}</check>.\n" if action_hints else ""
+    hints += action_hints
+    setup_cmds = state["instance"].get("setup_cmds", "")
+    setup_cmds_hints = f"\nHints: this is the build commands used to build this repo other developers used in other platforms that may help you understand how to build the program. <command>{setup_cmds}</command>" if setup_cmds else ""
+    hints += setup_cmds_hints
+    test_cmds = state["instance"].get("test_cmds", "")
+    test_cmd_hints = f"\nHints: this is the test command used for this repo other developers used in other platforms that may help you verify whether your build is successful. <command>{test_cmds}</command>" if test_cmds else ""
+    hints += test_cmd_hints
+    platform_hints = ""
+    if state["platform"] == "windows":
+        platform_hints = f"\n\nNote: This is a windows server image. Use windows powershell command.\n"
+    hints += platform_hints
 
     logger.info("-" * 10 + "Start setup conversation" + "-" * 10)
     messages = [
@@ -190,24 +224,32 @@ def setup(max_steps: int, state: AgentState) -> dict:
         )),
         HumanMessage(
             ReAct_prompt.format(
-                tools=SetupAction.__doc__,
+                tools=SetupAction.prompt[state["platform"]],
                 project_structure=repo_structure,
                 docs=state["docs"],
-            )
+            ) + hints
         ),
     ]
     # logger.info(f"### Initial messages: {messages}")
     messages.extend(state["verify_messages"])
+    if bool(state["verify_messages"]):
+        messages.append(
+            HumanMessage(
+                f"Test cases did not run successfully. The setup of the repository is not successful so far... Please try again to setup dependencies, build the repo and run tests!"
+            )
+        )
     prefix_messages = len(messages)
-    commands = []
+    commands = state.get("setup_commands", [])
     step = 0
+    start_time = time.time()
     while step < max_steps:
-        if time.time() - state["start_time"] > 30 * 60:
-            raise TimeoutError("Reached global timeout of 30 minutes")
+        if time.time() - start_time > timeout * 60:
+            logger.info(f"Reached global timeout of {timeout} minutes")
+            break
         step += 1
         # uses a window to avoid exceed context
         commands_history = HumanMessage(
-            f"\nThe commands you have run:```\n{(', '.join(commands))}```\nFollowing are the last {SETUP_CONVERSATION_WINDOW} messages:\n"
+            f"\nThe previous commands which you have run to try to set up the repository:```\n{commands}```\nFollowing are the last {SETUP_CONVERSATION_WINDOW} messages:\n"
         )
         if len(messages) < SETUP_CONVERSATION_WINDOW + prefix_messages:
             input_messages = (
@@ -224,8 +266,6 @@ def setup(max_steps: int, state: AgentState) -> dict:
 
         response = llm.invoke(input_messages)
 
-
-        # print(response.pretty_repr())
         logger.info("\n" + response.pretty_repr())
         messages.append(response)
         action = parse_setup_action(response.content)

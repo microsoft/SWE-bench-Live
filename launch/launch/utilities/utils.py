@@ -4,14 +4,14 @@ Utility functions for workspace and repository management.
 import json
 import logging
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
-from git import Repo
-
 from launch.utilities.config import Config
+from launch.utilities.get_repo_structure import view_repo_structure
 from launch.utilities.llm import LLMProvider
 from launch.utilities.logger import setup_logger, clean_logger
-
+import subprocess
 
 @dataclass
 class WorkSpace:
@@ -36,8 +36,16 @@ class WorkSpace:
     logger: logging.Logger
     llm: LLMProvider
     llm_log_folder: Path
+    repo_structure: str
     date: str = None
     language: str = "python"
+    platform: str = "linux"
+    max_trials: str = 3
+    max_steps_setup: int = 20
+    max_steps_verify: int = 20
+    max_steps_organize: int = 20
+    timeout: int = 30
+    image_prefix: str = "repolaunch/dev"
     
     def cleanup(self) -> None:
         """Clean up workspace resources."""
@@ -60,8 +68,22 @@ def prepare_repo(instance: dict, repo_root: Path) -> Path:
     if repo_root.exists():
         return repo_root
 
-    repo = Repo.clone_from(url, repo_root)
-    repo.git.reset("--hard", base_commit)
+    # Clone repo using subprocess
+    subprocess.run(
+        ["git", "clone", url, str(repo_root)],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    # Reset to base_commit using subprocess
+    subprocess.run(
+        ["git", "reset", "--hard", base_commit],
+        cwd=str(repo_root),
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
 
     return repo_root
 
@@ -94,7 +116,7 @@ def prepare_workspace(
     Returns:
         WorkSpace: Fully configured workspace ready for processing
     """
-    instance_folder = workspace_root / instance["instance_id"]
+    instance_folder = workspace_root / "playground" / instance["instance_id"]
     instance_folder.mkdir(parents=True, exist_ok=True)
     result_path = instance_folder / "result.json"
     instance_path = instance_folder / "instance.json"
@@ -107,8 +129,18 @@ def prepare_workspace(
     )
     with open(instance_path, "w") as f:
         json.dump(instance, f, indent=2)
+    
+    repo_structure = None
+    if os.path.exists(result_path):
+        with open(result_path) as f:
+            history = f.read()
+        if history.strip():
+            history = json.loads(history)
+            repo_structure = history.get("repo_structure", None)
 
     repo_root = prepare_repo(instance, instance_folder / "repo")
+    if not repo_structure:
+        repo_structure = view_repo_structure(repo_root)
     log_file = instance_folder / "setup.log"
     logger = setup_logger(
         instance["instance_id"], log_file, printing=config.print_to_console
@@ -121,9 +153,17 @@ def prepare_workspace(
         instance_id=instance["instance_id"],
         language=language,
         repo_root=repo_root,
+        image_prefix=config.image_prefix,
         instance_path=instance_path,
         result_path=result_path,
+        repo_structure=repo_structure,
         logger=logger,
         llm_log_folder=llm_log_folder,
         llm=llm,
+        platform=config.platform,
+        max_trials=config.max_trials,
+        max_steps_setup=config.max_steps_setup,
+        max_steps_verify=config.max_steps_verify,
+        max_steps_organize=config.max_steps_organize,
+        timeout=config.timeout
     )
