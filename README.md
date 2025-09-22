@@ -31,6 +31,7 @@
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 ## News
+- **09/23/2025**: We upgraded [RepoLaunch](./launch) to support building repos on all mainstram languages and on both linux&windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require rebuild after code-fix for automated test.
 - **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for SWE-bench-Live: **Each month, we will add 50 newly verified, high-quality issues to the dataset**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access the latest issues, please refer to the `full` split!
 - **07/19/2025**: We've employed a LLM filter to automatically filter full dataset to create [SWE-bench-Live-Verified](./swebench/collect/produce/README.md). The initial Verified subset contains 500 instances from 2024-07 to 2025-04.
 - **06/30/2025**: We’ve updated the dataset — it now includes a total of **1,565** task instances across **164** repositories!

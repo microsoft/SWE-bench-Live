@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 from launch.agent.action_parser import ActionParser
 from launch.agent.prompt import ReAct_prompt
 from launch.agent.state import AgentState, auto_catch
-from launch.runtime import SetupRuntime
+from launch.core.runtime import SetupRuntime
 
-system_msg = """You are a developer. Your task is to verify whether the environment for the given project is set up correctly. Your colleague has set up a Docker environment for the project. You need to verify if it can successfully run the tests of the project.
+system_msg: str = """You are a developer. Your task is to verify whether the environment for the given project is set up correctly. Your colleague has set up a Docker environment for the project. You need to verify if it can successfully run the tests of the project.
 - You interact with a Bash session inside this container.
 - The container is based on {base_image}.
 - The setup commands that your colleague has run are {setup_commands}
@@ -30,11 +30,13 @@ Your test command must output detailed pass/fail status for each test item. This
 PASSED tests/test_resources.py::test_fetch_centromeres
 PASSED tests/test_vis.py::test_to_ucsc_colorstring
 ```
-Since we need to parse the test output to extract a test item → status mapping, **this requirement is mandatory**. If you observed that your test command does not produce such detailed output, you must adjust it accordingly.
+Since we need to parse the test output to extract a test item -> status mapping, **this requirement is mandatory**. 
+If you observed that your test command does not produce such detailed output (test_case_name -> pass/fail mapping), you must adjust it accordingly.
+If test results are written to a file not print to stdout, then find the file and output its content to console (with cat command etc.) to verify.
 
 In summary, your goal is:
 1. Write the test commands that could output detailed pass/fail status for each test item, you can iterate until it does. (this is mandatory, DO NOT ignore this requirement!!! This is your obligation to correctly identify the test commands to run the test suite of the project, and find a way to output detailed pass/fail status)
-2. Run the test command to verify if the environment is set up correctly. If not, report any observed issues. If you think the setup is correct, report none issue.
+2. Run the test command to verify if the environment is set up correctly. If not, report any observed issues. If you think the setup is correct, report none issue by outputting <issue>None</issue>.
 """
 
 
@@ -115,11 +117,11 @@ Please using following format after `Action: ` to make a valid action choice:
             return VerifyObservation(content=action.args, success=False)
 
 
-VERIFY_CONVERSATION_WINDOW = 10
+VERIFY_CONVERSATION_WINDOW = 20
 
 
 @auto_catch
-def verify(max_steps: int, state: AgentState) -> dict:
+def verify(state: AgentState, max_steps: int) -> dict:
     """
     ReAct agent for environment verification through test command execution.
     
@@ -133,15 +135,27 @@ def verify(max_steps: int, state: AgentState) -> dict:
     if state["exception"]:
         raise state["exception"]
 
+    hints = "\n\n"
     session = state["session"]
     llm = state["llm"]
     logger = state["logger"]
     setup_commands = state["setup_commands"]
     logger.info("-" * 10 + "Start verify conversation" + "-" * 10)
+    setup_cmds = state["instance"].get("setup_cmds", "")
+    setup_cmds_hints = f"\nHints: this is the build commands used to build this repo other developers used in other platforms that may help you understand how to run this repo. <command>{setup_cmds}</command>" if setup_cmds else ""
+    hints += setup_cmds_hints
+    platform_hints = ""
+    if state["platform"] == "windows":
+        platform_hints = f"\n\nHint: This is a windows server image. Use windows powershell command.\n"
+    hints += platform_hints
+    test_cmds = state["instance"].get("test_cmds", "")
+    test_cmd_hints = f"\n\nHint: This is the test commands used for this repo other developers used in other platforms that may help you find and run test cases. <test>{test_cmds}</test>" if test_cmds else ""
+    hints += test_cmd_hints
+        
     messages = [
         SystemMessage(
             system_msg.format(
-                base_image=state["base_image"], setup_commands=setup_commands
+                base_image=state["base_image"], setup_commands=setup_commands,
             )
         ),
         HumanMessage(
@@ -149,7 +163,7 @@ def verify(max_steps: int, state: AgentState) -> dict:
                 tools=VerifyAction.__doc__,
                 project_structure=state["repo_structure"],
                 docs=state["docs"],
-            )
+            ) + hints
         ),
     ]
     prefix_messages = len(messages)

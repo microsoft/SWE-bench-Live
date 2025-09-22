@@ -6,6 +6,9 @@ from pathlib import Path
 
 from rich.logging import RichHandler
 
+import io, sys
+from rich.console import Console
+
 
 def setup_logger(instance_id: str, log_file: Path, printing: bool = True) -> logging.Logger:
     """
@@ -22,10 +25,10 @@ def setup_logger(instance_id: str, log_file: Path, printing: bool = True) -> log
     logger = logging.getLogger(instance_id)
     logger.setLevel(logging.INFO)
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    if log_file.exists():
-        log_file.unlink()
+    # if log_file.exists():
+    #    log_file.unlink()
     formatter = logging.Formatter("%(asctime)s - %(message)s")
-    fh = logging.FileHandler(log_file)
+    fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setLevel(logging.INFO)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
@@ -35,7 +38,10 @@ def setup_logger(instance_id: str, log_file: Path, printing: bool = True) -> log
     # logger.addHandler(ch)
     # add rich handler
     if printing:
-        rh = RichHandler()
+        # Wrap stdout in a UTF-8 TextIOWrapper; replace any bad chars defensively
+        utf8_stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        console = Console(file=utf8_stdout, soft_wrap=True)
+        rh = RichHandler(console=console, rich_tracebacks=True, show_path=False)
         rh.setLevel(logging.INFO)
         logger.addHandler(rh)
     return logger
