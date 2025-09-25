@@ -130,6 +130,27 @@ print(status)
 container.clean_up()
 ```
 
+### To evaluate the effect of a new diff patch:
+
+```python
+from launch.core.runtime import SetupRuntime
+from launch.scripts.parser import run_parser
+
+container = SetupRuntime.from_launch_image(instance["docker_image"])
+container.send_command(f"""git apply - <<NEW_PATCH\n{diff_patch}\nNEW_PATCH""")
+# for windows powershell: container.send_command(f"""git apply - <<@"{diff_patch}"@""")
+container.send_command(instance["rebuild_cmd"])
+testlog = container.send_command(instance["test_cmd"])
+status = run_parser(instance["parser"], testlog)
+
+print(status)
+# {"testcase1": "pass", "testcase2": "fail", "testcase3": "skip"}
+
+# if you need to save the changes
+# container.send_command("git commit -m 'apply new patch'")
+# container.commit(image_name="experiment", tag="1")
+container.clean_up()
+```
 
 ### If launch was interrupted, you can collect summary manually
 
