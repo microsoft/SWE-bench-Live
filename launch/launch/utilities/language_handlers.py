@@ -128,7 +128,10 @@ class RustHandler(LanguageHandler):
         return "rust"
     
     def base_images(self, platform = "linux") -> List[str]:
-        return [f"rust:1.7{v}" for v in range(0, 10)]
+        if platform == "linux": 
+            [f"rust:1.{v}" for v in range(70, 91)]
+        if platform == "windows":
+            raise NotImplementedError("Rust does not have official windows images, build some base images yourself!")
     
     def setup_environment(self, session: SetupRuntime, date: Optional[str] = None) -> Optional[Any]:
         """Setup Rust environment."""
@@ -136,7 +139,8 @@ class RustHandler(LanguageHandler):
         return None
     
     def get_setup_instructions(self, base_image: str, platform: str = "linux") -> str:
-        return """
+        if platform == "linux": 
+            return """
 ### Rust-Specific Instructions:
 - Use `cargo build` to build the project
 - Use `cargo test` to run tests
@@ -144,6 +148,8 @@ class RustHandler(LanguageHandler):
 - Install system dependencies if needed (check Cargo.toml for sys crates)
 - Consider using `cargo install` for binary dependencies
 """
+        if platform == "windows":
+            raise NotImplementedError("search for installation guide and fill it in here!!!")
     
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup Rust environment."""
@@ -328,27 +334,18 @@ Some dependencies may not be supported by choco and have to be installed through
 Some dependency install examples using choco:
 
 -- MSVC dependencies: 
+# Download visualstudio build tools
 choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended"
-# Add MSBuild to PATH (as mentioned in gist.github.com)
-$buildToolsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin"
-$currentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-if ($currentPath -notlike "*$buildToolsPath*") {
-    [Environment]::SetEnvironmentVariable("Path", "$currentPath;$buildToolsPath", "Machine")
-}
+# Add MSBuild and cl.exe to PATH 
+$msbuildToolsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin";
+$clexePath = Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64" | Select-Object -First 1 -ExpandProperty FullName;
+$currentPath = [Environment]::GetEnvironmentVariable("Path", "Machine");
+[Environment]::SetEnvironmentVariable("Path", "$currentPath;$msbuildToolsPath;$clexePath", "Machine");
+$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine");
+# Check existance
+msbuild -version; 
+cl.exe;
 
-# Refresh environment variables in current session
-$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
-
-# Verify cl.exe is available
-& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" 2>$null
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ cl.exe found and working"
-} else {
-    Write-Host "❌ cl.exe not found or not working"
-}
-
-# Verify MSBuild
-msbuild -version
 
 -- Qt with MSVC: 
 (install MSVC as above)

@@ -16,20 +16,46 @@ from launch.core.runtime import SetupRuntime
 from launch.utilities.language_handlers import get_language_handler
 
 
-system_msg = """You are a developer. You have already setup all dependencies and build the repository in the current folder.
-However, for the maintainance of the project, you need to organize the minimal commands to re-install ONLY modified packages and build the projects again after edits to the source code / package list.
+# system_msg = """You are a developer. You have already setup all dependencies and build the repository in the current folder.
+# However, for the maintainance of the project, you need to organize the minimal commands to re-install ONLY modified packages and build the projects again after edits to the source code / package list.
 
-- You are inside a docker container with source code already inside the container under the current directory called /testbed
-- The dependencies of the repository have already been set up by you before.
-- The full history commands that you used to try to set up the repo: {commands}
+# - You are inside a docker container with source code already inside the container under the current directory called /testbed
+# - The dependencies of the repository have already been set up by you before.
+# - The full history commands that you used to try to set up the repo: {commands}
 
-You can send commands in the container for several times to try to test the commands to re-build the repo and expolre the repo freely if you need more information.
-You do not need to include the commands to run test cases because we will do it later.
+# You can send commands in the container for several times to try to test the commands to re-build the repo and expolre the repo freely if you need more information.
+# You do not need to include the commands to run test cases because we will do it later.
 
-The final objective is: 
-    to "find the minimal commands to re-install ONLY modified packages AND re-build the project" again after package list / source code edits and "output your minimal re-install & re-build commands in one line".
-You need to finish it in {steps} steps.
-"""
+# The final objective is: 
+#     to "find the minimal commands to re-install ONLY modified packages AND re-build the project" again after package list / source code edits and "output your minimal re-install & re-build commands in one line".
+# You need to finish it in {steps} steps.
+# """
+system_msg = """You are a developer. You have already set up all dependencies and successfully built the repository in the current folder.
+Now, for project maintenance, you must organize the minimal commands required to re-install only modified packages and re-build the project after any edits to the source code or package list.
+
+Environment details:
+- You are inside a Docker container with the source code already present at /testbed.
+- All dependencies have been previously installed by you.
+- The complete command history of your setup process is available as {commands}.
+
+Your workflow process:
+1. You may execute commands inside the container multiple times to inspect files, verify changes, or explore the repo.
+2. You do not need to include test case execution commands.
+3. When you think you have found the minimal rebuild commands, submit them using <submit>...</submit>
+4. The system will AUTOMATICALLY verify your submitted commands by executing them.
+5. If verification passes (commands execute successfully), the process completes.
+6. If verification fails, you will receive the error output and must try different commands.
+7. Repeat steps 3-6 until you find working minimal rebuild commands.
+
+Final objective:
+Find the minimal set of commands required to:
+- Re-install only modified packages after edits to the package list or source code.
+- Re-build the project efficiently.
+
+Output requirements:
+Submit your minimal re-install and re-build commands in a single line using <submit>.
+The system will automatically test them and provide feedback if they fail.
+You must complete this in {steps} steps."""
 
 # Omit the following requirement for now:
 #   -> You are not allowed to edit code files in the project.
@@ -125,6 +151,53 @@ Please using following format after `Action: ` to make a valid action choice:
 SETUP_CONVERSATION_WINDOW = 40
 
 
+def analyze_verification_with_llm(llm, submitted_commands: str, verification_output: str) -> bool:
+    """
+    Use LLM to analyze verification results and determine if rebuild was successful.
+    
+    Args:
+        llm: The language model to use for analysis
+        submitted_commands (str): The commands that were submitted for verification
+        verification_output (str): The output from executing the commands
+        return_code (int): The return code from command execution
+        
+    Returns:
+        bool: True if LLM determines rebuild was successful, False otherwise
+    """
+    analysis_prompt = f"""You are an expert developer analyzing the results of rebuild command execution.
+
+SUBMITTED COMMANDS:
+{submitted_commands}
+
+EXECUTION OUTPUT:
+{verification_output}
+
+Your task is to determine whether the rebuild commands executed SUCCESSFULLY or FAILED.
+
+Consider the following:
+- Error messages in the output
+- Warning messages vs critical errors
+- Whether the build/installation actually completed
+- Whether dependencies were properly installed
+- Whether the project was successfully built
+
+Respond with EXACTLY one of these two words:
+- SUCCESS: If the rebuild commands executed successfully and the project is properly built
+- FAILURE: If the rebuild commands failed or the project is not properly built
+
+Your response:"""
+
+    try:
+        response = llm.invoke([HumanMessage(analysis_prompt)])
+        analysis = response.content.strip().upper()
+        
+        # Return True if LLM says SUCCESS, False otherwise
+        return analysis == "SUCCESS"
+    except Exception as e:
+        # Fallback to return code check if LLM analysis fails
+        return analysis == "FAILURE"
+
+
 @auto_catch
 def organize_setup(state: AgentState, max_steps: int, timeout: int = 30) -> dict:
     """
@@ -205,8 +278,41 @@ def organize_setup(state: AgentState, max_steps: int, timeout: int = 30) -> dict
             commands.append(action.args)
         observation = observation_for_setup_action(state, action)
         if observation.is_stop:
-            answer = observation.content
-            break
+            # Agent submitted commands, now automatically verify them
+            submitted_commands = observation.content
+            logger.info(f"Agent submitted commands: {submitted_commands}")
+            logger.info("Automatically verifying submitted commands...")
+            
+            # Execute the submitted commands to verify they work
+            session = state["session"]
+            verification_result = session.send_command(submitted_commands)
+            verification_output = verification_result.to_observation()
+            
+            # Use LLM to analyze verification results instead of just checking return code
+            verification_success = analyze_verification_with_llm(
+                llm, submitted_commands, verification_output
+            )
+            
+            if verification_success:
+                # Verification passed according to LLM analysis
+                logger.info("Verification PASSED - LLM determined commands executed successfully")
+                answer = submitted_commands
+                break
+            else:
+                # Verification failed according to LLM analysis
+                logger.info("Verification FAILED - LLM determined commands failed")
+                verification_message = HumanMessage(
+                    f"ENFORCED VERIFICATION FAILED:\n"
+                    f"Your submitted commands: {submitted_commands}\n"
+                    f"Execution output:\n{verification_output}\n"
+                    f"An expert analysis of the output indicates the rebuild was not successful. "
+                    f"Please analyze the error and provide different rebuild commands that will work. "
+                    f"Be sure to verify on your own before submission."
+                )
+                logger.info("\n" + verification_message.pretty_repr())
+                messages.append(verification_message)
+                continue
+                
         message = HumanMessage(f"Observation:\n{observation.content}")
         logger.info("\n" + message.pretty_repr())
         messages.append(message)
@@ -217,7 +323,7 @@ def organize_setup(state: AgentState, max_steps: int, timeout: int = 30) -> dict
         "messages": messages,
         "commands": commands,
         "setup_messages": messages[prefix_messages:],
-        "setup_commands": [answer],
-        "success": (answer is not None),
+        "setup_commands": [answer] if answer else [],
+        "success": (answer is not None)
     }
 

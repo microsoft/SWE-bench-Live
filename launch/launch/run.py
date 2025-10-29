@@ -8,7 +8,8 @@ import json
 import os
 import shutil
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from pathlib import Path
 import traceback
 
@@ -67,7 +68,7 @@ def setup_instance(instance, config, workspace_root):
         setup(instance, workspace)
         result = workspace.result_path.read_text()
         if result.strip():
-            result = json.loads(workspace.result_path.read_text())
+            result = json.loads(result)
             if result["completed"]:
                 return "success", instance["instance_id"], None
             else:
@@ -126,7 +127,7 @@ def organize_instance(instance, config, workspace_root):
         organize(instance, workspace)
         result = workspace.result_path.read_text()
         if result.strip():
-            result = json.loads(workspace.result_path.read_text())
+            result = json.loads(result)
             if result["organize_completed"]:
                 return "success", instance["instance_id"], None
             else:
@@ -197,26 +198,36 @@ def run_setup(config: Config, dataset: list):
                 for instance in dataset
             }
 
-            for future in as_completed(futures):
-                status, instance_id, error = future.result()
-                if status == "skip":
-                    console.print(
-                        f"[yellow]Skipped[/yellow] {instance_id}: {error or ''}"
-                    )
-                elif status == "fail":
+            for future in as_completed(futures): 
+                try:
+                    status, instance_id, error = future.result(timeout=10800)  # 3 hours timeout
+                    if status == "skip":
+                        console.print(
+                            f"[yellow]Skipped[/yellow] {instance_id}: {error or ''}"
+                        )
+                    elif status == "fail":
+                        with lock:
+                            progress.update(
+                                task, advance=0, fail=progress.tasks[0].fields["fail"] + 1
+                            )
+                        console.print(f"[red]Failed[/red] {instance_id}: {error}")
+                    elif status == "success":
+                        with lock:
+                            progress.update(
+                                task,
+                                advance=0,
+                                success=progress.tasks[0].fields["success"] + 1,
+                            )
+                        console.print(f"[green]Success![/green] {instance_id}")
+                except TimeoutError:
+                    # Find the instance_id for this future
+                    instance_id = futures.get(future, {}).get("instance_id", "unknown")
                     with lock:
                         progress.update(
                             task, advance=0, fail=progress.tasks[0].fields["fail"] + 1
                         )
-                    console.print(f"[red]Failed[/red] {instance_id}: {error}")
-                elif status == "success":
-                    with lock:
-                        progress.update(
-                            task,
-                            advance=0,
-                            success=progress.tasks[0].fields["success"] + 1,
-                        )
-                    console.print(f"[green]Success![/green] {instance_id}")
+                    console.print(f"[red]Timeout[/red] {instance_id}: Task exceeded 3 hour timeout")
+                    future.cancel()  # Cancel the timed-out task
                 progress.update(task, advance=1)
 
     console.rule("[bold green] Finished setting up all instances!")
@@ -265,26 +276,36 @@ def run_organize(config: Config, dataset: list):
                 for instance in dataset
             }
 
-            for future in as_completed(futures):
-                status, instance_id, error = future.result()
-                if status == "skip":
-                    console.print(
-                        f"[yellow]Skipped[/yellow] {instance_id}: {error or ''}"
-                    )
-                elif status == "fail":
+            for future in as_completed(futures): 
+                try:
+                    status, instance_id, error = future.result(timeout=10800)  # 3 hours timeout
+                    if status == "skip":
+                        console.print(
+                            f"[yellow]Skipped[/yellow] {instance_id}: {error or ''}"
+                        )
+                    elif status == "fail":
+                        with lock:
+                            progress.update(
+                                task, advance=0, fail=progress.tasks[0].fields["fail"] + 1
+                            )
+                        console.print(f"[red]Failed[/red] {instance_id}: {error}")
+                    elif status == "success":
+                        with lock:
+                            progress.update(
+                                task,
+                                advance=0,
+                                success=progress.tasks[0].fields["success"] + 1,
+                            )
+                        console.print(f"[green]Success![/green] {instance_id}")
+                except TimeoutError:
+                    # Find the instance_id for this future
+                    instance_id = futures.get(future, {}).get("instance_id", "unknown")
                     with lock:
                         progress.update(
                             task, advance=0, fail=progress.tasks[0].fields["fail"] + 1
                         )
-                    console.print(f"[red]Failed[/red] {instance_id}: {error}")
-                elif status == "success":
-                    with lock:
-                        progress.update(
-                            task,
-                            advance=0,
-                            success=progress.tasks[0].fields["success"] + 1,
-                        )
-                    console.print(f"[green]Success![/green] {instance_id}")
+                    console.print(f"[red]Timeout[/red] {instance_id}: Task exceeded 3 hour timeout")
+                    future.cancel()  # Cancel the timed-out task
                 progress.update(task, advance=1)
 
     console.rule("[bold green] Finished organizing all instances!")
@@ -292,18 +313,19 @@ def run_organize(config: Config, dataset: list):
 
 def run_launch(config_path):
     config: Config = load_config(config_path)
+    with open(config.dataset, "r") as f:
+        dataset = [json.loads(line) for line in f]
+        instance_ids: list[str] = [instance["instance_id"] for instance in dataset]
     if config.mode["setup"]:
-        with open(config.dataset, "r") as f:
-            dataset = [json.loads(line) for line in f]
         run_setup(config, dataset)
-        collect.main(config.workspace_root, platform = config.platform, step = "setup")
+        collect.main(config.workspace_root, platform = config.platform, step = "setup", instance_ids = instance_ids)
     if config.mode["organize"]:
         if not os.path.exists(f"{config.workspace_root}/setup.jsonl"):
             raise RuntimeError(f"{config.workspace_root}/setup.jsonl NOT FOUND. You need to finish the setup step first.")
         with open(f"{config.workspace_root}/setup.jsonl") as f:
             dataset = [json.loads(line) for line in f]
         run_organize(config, dataset)
-        collect.main(config.workspace_root, platform = config.platform, step = "organize")
+        collect.main(config.workspace_root, platform = config.platform, step = "organize", instance_ids = instance_ids)
     return
 
 

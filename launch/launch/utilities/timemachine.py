@@ -70,26 +70,51 @@ def make_app(cutoff_date):
 
     class PackageIndexHandler(RequestHandler):
         async def get(self, package):
-            package_index = requests.get(JSON_URL.format(package=package)).json()
+            try:
+                response = requests.get(JSON_URL.format(package=package))
+                if response.status_code == 404:
+                    # Package doesn't exist - return 404 to pip
+                    self.set_status(404)
+                    self.write(f"Package '{package}' not found")
+                    return
+                
+                response.raise_for_status()
+                package_index = response.json()
+            except (requests.RequestException, ValueError) as e:
+                # Network error or invalid JSON response
+                self.set_status(500)
+                self.write(f"Error fetching package '{package}': {str(e)}")
+                return
+            
+            # Check if releases key exists
+            if "releases" not in package_index:
+                # Package exists but has no releases (empty package)
+                self.write(PACKAGE_HTML.format(package=package, links=""))
+                return
+                
             release_links = ""
             for release in package_index["releases"].values():
                 for file in release:
-                    release_date = parse_iso(file["upload_time"])
-                    if release_date < CUTOFF:
-                        if file["requires_python"] is None:
-                            release_links += '    <a href="{url}#sha256={sha256}">{filename}</a><br/>\n'.format(
-                                url=file["url"],
-                                sha256=file["digests"]["sha256"],
-                                filename=file["filename"],
-                            )
-                        else:
-                            rp = file["requires_python"].replace(">", "&gt;")
-                            release_links += '    <a href="{url}#sha256={sha256}" data-requires-python="{rp}">{filename}</a><br/>\n'.format(
-                                url=file["url"],
-                                sha256=file["digests"]["sha256"],
-                                rp=rp,
-                                filename=file["filename"],
-                            )
+                    try:
+                        release_date = parse_iso(file["upload_time"])
+                        if release_date < CUTOFF:
+                            if file["requires_python"] is None:
+                                release_links += '    <a href="{url}#sha256={sha256}">{filename}</a><br/>\n'.format(
+                                    url=file["url"],
+                                    sha256=file["digests"]["sha256"],
+                                    filename=file["filename"],
+                                )
+                            else:
+                                rp = file["requires_python"].replace(">", "&gt;")
+                                release_links += '    <a href="{url}#sha256={sha256}" data-requires-python="{rp}">{filename}</a><br/>\n'.format(
+                                    url=file["url"],
+                                    sha256=file["digests"]["sha256"],
+                                    rp=rp,
+                                    filename=file["filename"],
+                                )
+                    except (KeyError, ValueError):
+                        # Skip malformed file entries
+                        continue
 
             self.write(PACKAGE_HTML.format(package=package, links=release_links))
 

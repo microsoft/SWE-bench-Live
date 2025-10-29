@@ -42,7 +42,7 @@ Do not print only the head and tail of the output file to console (do not use he
 
 
 ## Note
-If one test suite outputs a grouped result, try your best to reveal the result of EACH testcase under this test suite. 
+If one test suite / test set outputs a grouped result or contains multiple unit testcases, try your best to reveal the result of EACH unit testcase under this test suite. The testcase names in your output should be split to the finest granularity.
 If you cannot figure out, taking a test suite as one testcase is also acceptable. In this case, mark a suite with some testcases failed / error as fail, with all test cases skipped as skip, otherwise as pass.
 
 ## Note
@@ -237,10 +237,23 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
         if action.action == "command":
             session = state["session"]
             result = session.send_command(action.args)
+            test_output += result.output # This is full (unstripped) command output
             return SetupObservation(content=result.to_observation(), is_stop=False)
         if action.action == "python":
             result = run_parser(action.args, test_output)
-            return SetupObservation(content=json.dumps(result), is_stop=False)
+            truncated_result = json.dumps(result, indent = True)
+            if len(truncated_result) > 40000:
+                truncated_result = truncated_result[:40000] + "\n...result truncated due to length...\n"
+            content = f"""
+Below is the execution result of your Python script:
+{truncated_result}
+Please judge whether:
+(1) Your Python script extracts the statuses of all testcases and 
+(2) Your script and test command have made best effort to reveal the status of each unit testcase under a test suite / set if there's test suite / set. The testcase names in your output should be split to the finest granularity.
+If not successful, please adjust your test command, run your new test command in container, and adjust your Python script to extract test status.
+If successful, please submit.
+"""
+            return SetupObservation(content=content, is_stop=False)
         if action.action == "search":
             result = state["search_tool"].invoke(action.args)
             return SetupObservation(content=json.dumps(result), is_stop=False)
@@ -313,7 +326,6 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
             break
         if action and action.action == "command":
             commands.append(action.args)
-            test_output += observation.content
         if action and action.action == "python":
             parser = action.args
             test_status = observation.content

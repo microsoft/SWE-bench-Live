@@ -37,7 +37,6 @@ def save_organize_result(state: AgentState) -> dict:
     if not exception and not state.get("success", False):
         exception = "Organize failed"
 
-    logger.info("Result saved to: " + str(path))
     if state["exception"]:
         logger.error(f"!!! Exception: {state['exception']}")
 
@@ -104,6 +103,8 @@ def save_organize_result(state: AgentState) -> dict:
                 indent=2,
             )
         )
+    time.sleep(10)
+    logger.info("Result saved to: " + str(path))
 
     return {
         "session": None,

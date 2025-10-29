@@ -17,7 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import docker
 from docker.models.containers import Container
@@ -169,11 +169,11 @@ class CommandResult:
         
         output = ANSI_ESCAPE.sub("", self.output).replace("\r", "")
 
-        if len(output) > 1024 * 8 and strip:
+        if len(output) > 1024 * 16 and strip:
             output = (
-                output[: 1024 * 4]
+                output[: 1024 * 8]
                 + "....stripped due to length....\n"
-                + output[-1024 * 4 :]
+                + output[-1024 * 8 :]
             )
 
         if self.metadata is None:
@@ -482,7 +482,7 @@ function prompt {
         cls,
         image_name: str,
         instance_id: str,
-        platform: str = "linux",
+        platform: Literal["linux", "windows"] = "linux",
     ) -> SetupRuntime:
         """
         Start a Docker container session for repository testing.
@@ -552,7 +552,7 @@ function prompt {
         cls,
         image_name: str,
         instance: dict,
-        platform: str = "linux",
+        platform: Literal["linux", "windows"] = "linux",
     ) -> SetupRuntime:
         """
         Start a Docker container session for repository testing.
