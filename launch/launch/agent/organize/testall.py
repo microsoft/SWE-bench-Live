@@ -229,7 +229,7 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
         Returns:
             SetupObservation: Result of action execution
         """
-        nonlocal test_output
+        nonlocal test_output, test_status
 
         if not action or not action.action:
             content = f"""Please using following format after `Action: ` to make a valid action choice: \n{VerifyAction.__doc__}"""
@@ -238,10 +238,11 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
             session = state["session"]
             result = session.send_command(action.args)
             test_output += result.output # This is full (unstripped) command output
-            return SetupObservation(content=result.to_observation(), is_stop=False)
+            return SetupObservation(content=result.to_observation(), is_stop=False) # content is trucated history
         if action.action == "python":
             result = run_parser(action.args, test_output)
-            truncated_result = json.dumps(result, indent = True)
+            test_status = json.dumps(result, indent = True)
+            truncated_result = test_status
             if len(truncated_result) > 40000:
                 truncated_result = truncated_result[:40000] + "\n...result truncated due to length...\n"
             content = f"""
@@ -328,7 +329,6 @@ If successful, please submit.
             commands.append(action.args)
         if action and action.action == "python":
             parser = action.args
-            test_status = observation.content
         message = HumanMessage(f"Observation:\n{observation.content}")
         logger.info("\n" + message.pretty_repr())
         messages.append(message)
