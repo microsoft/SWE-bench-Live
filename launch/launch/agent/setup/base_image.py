@@ -24,19 +24,28 @@ def select_base_image(state: AgentState) -> dict:
     llm = state["llm"]
     logger = state["logger"]
     language = state["language"]
+    platform = state["platform"]
+    hints = state["instance"].get("hints", "")
+    hints = f"\nAnd additional hints to set up / test the repo: <hint>{hints}</hint>\n" if hints else ""
+    
+    consideration = ""
+    if platform != "linux":
+        consideration += f"4. The operating system of the image is {platform}."
     
     # Get language handler and candidate images
     language_handler = get_language_handler(language)
-    candidate_images = language_handler.base_images
+    candidate_images = language_handler.base_images(platform = platform)
     messages = [
         HumanMessage(
             content=f"""Based on related file:
 {state['docs']}
+{hints}
 
 Please recommend a suitable base Docker image. Consider:
 1. The programming language and version requirements
 2. Common system dependencies
 3. Use official images when possible
+{consideration}
 
 Select a base image from the following candidate list:
 {candidate_images}

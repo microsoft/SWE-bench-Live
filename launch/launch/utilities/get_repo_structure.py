@@ -10,6 +10,16 @@ from rich.tree import Tree
 from io import StringIO
 from rich.console import Console
 
+
+'''
+Warning!!!!
+If you see the following error in windows
+[WinError 3] The system cannot find the path specified:
+'playground\\java\\jitsi__jitsi-319309e\\repo\\resources\\install\\src\\mac\\dist\\Jitsi.app\\Contents\\Frameworks\\Spar
+kle.framework\\Versions\\A\\Resources\\finish_installation.app\\Contents\\Resources\\pt_BR.lproj'
+you need to enable long path in windows setting
+'''
+
 def walk_directory(directory: pathlib.Path, tree: Tree, max_depth: int, current_depth: int = 0) -> None:
     """
     Recursively build a Tree with directory contents, stopping at max_depth.

@@ -27,11 +27,19 @@ class Config:
     workspace_root: str
     dataset: str
     instance_id: str  # instance id to run, if None, will run all instances in the dataset
+    mode: dict 
     first_N_repos: int = -1  # -1 means all repos
     max_workers: int = 5
     overwrite: bool = (
         False  # whether to overwrite existing results, False will skip existing repos
     )
+    platform: str = "linux"
+    max_trials: str = 3
+    max_steps_setup: int = 20
+    max_steps_verify: int = 20
+    max_steps_organize: int = 20
+    timeout: int = 30
+    image_prefix: str = "repolaunch/dev"
 
 
 def load_config(config_path: str) -> Config:
@@ -63,4 +71,18 @@ def load_config(config_path: str) -> Config:
         max_workers=config_data.get("max_workers", 5),
         overwrite=config_data.get("overwrite", False),
         instance_id=config_data.get("instance_id", None),
+        platform=config_data.get("os", "linux"),
+        max_trials=config_data.get("max_trials", 2),
+        max_steps_setup=config_data.get("max_steps_setup", 20),
+        max_steps_verify=config_data.get("max_steps_verify", 20),
+        max_steps_organize=config_data.get("max_steps_organize", 20),
+        timeout=config_data.get("timeout", 30),
+        image_prefix=config_data.get("image_prefix", "repolaunch/dev"),
+        mode=config_data.get(
+            "mode", 
+            {
+                "setup": True,
+                "organize": False,
+            }
+        ),
     )

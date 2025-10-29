@@ -19,7 +19,7 @@ class ActionParser(ABC):
         """Extract content between XML-style tags."""
         pattern = f"<{tag}>(.*?)</{tag}>"
         match = re.search(pattern, response, re.DOTALL)
-        return match.group(1).strip() if match else None
+        return match.group(1) if match else None
     
     @staticmethod
     def clean_response(response: str) -> str:
