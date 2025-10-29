@@ -120,8 +120,10 @@ Summary would be saved to `{workspace_root}/organize.jsonl`
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
 
-container = SetupRuntime.from_launch_image(instance["docker_image"])
-testlog = container.send_command(instance["test_cmd"])
+# load an instance from organize.jsonl
+
+container = SetupRuntime.from_launch_image(instance["docker_image"], instance["instance_id"])
+testlog = container.send_command(";".join(instance["test_commands"])).output
 status = run_parser(instance["parser"], testlog)
 
 print(status)
@@ -130,6 +132,27 @@ print(status)
 container.clean_up()
 ```
 
+### To evaluate the effect of a new diff patch:
+
+```python
+from launch.core.runtime import SetupRuntime
+from launch.scripts.parser import run_parser
+
+# load an instance from organize.jsonl
+# load your diff_patch
+
+container = SetupRuntime.from_launch_image(instance["docker_image"], instance["instance_id"])
+container.send_command(f"""git apply - <<'NEW_PATCH'\n{diff_patch}\nNEW_PATCH""")
+# for windows powershell: container.send_command(f"""git apply - <<@"{diff_patch}"@""")
+container.send_command(";".join(instance["rebuild_cmd"]))
+after_patch_testlog = container.send_command(";".join(instance["test_commands"])).output
+after_patch_status = run_parser(instance["log_parser"], testlog)
+
+# if you need to save the changes
+# container.send_command("git commit -m 'apply new patch'")
+# container.commit(image_name="experiment", tag="1")
+container.cleanup()
+```
 
 ### If launch was interrupted, you can collect summary manually
 
