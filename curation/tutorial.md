@@ -59,7 +59,11 @@ mkdir -p job_status
     --path-tasks output/tasks \
     --output-dir output/split_jobs
 
-python swe_task_crawling/merge_tasks.py -o output/raw_tasks.jsonl
+python swe_task_crawling/merge_tasks.py \
+    --input_folder output/tasks \
+    --input_repos output/filtered_repos.jsonl \
+    --output output/raw_tasks.jsonl
+
 ```
 
 ## Execution Env Setup with `RepoLaunch`

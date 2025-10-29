@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 
-def merge_jsonl_files(input_folder: str, output_file: str = None):
+def merge_jsonl_files(input_folder: str, output_file: str, input_repo: str):
     """
     Merge all .jsonl files from input_folder into a single output file.
     
@@ -15,7 +15,9 @@ def merge_jsonl_files(input_folder: str, output_file: str = None):
         input_folder (str): Path to the folder containing .jsonl files
         output_file (str): Path to the output merged file. If None, will be created in the input folder.
     """
-    input_path = Path(input_folder)
+    input_path: Path = Path(input_folder)
+
+    input_repo: Path = Path(input_repo)
     
     # Check if input folder exists
     if not input_path.exists():
@@ -25,6 +27,13 @@ def merge_jsonl_files(input_folder: str, output_file: str = None):
     if not input_path.is_dir():
         print(f"Error: '{input_folder}' is not a directory.")
         return False
+    
+    if not input_repo.exists():
+        print(f"Error: '{input_repo}' not found!")
+        return False
+    
+    repo_list = [json.loads(i) for i in input_repo.read_text().splitlines()]
+    repo_dict = {i["full_name"]: i for i in repo_list}
     
     # Find all .jsonl files in the input folder
     jsonl_files = list(input_path.glob("*.jsonl"))
@@ -46,8 +55,9 @@ def merge_jsonl_files(input_folder: str, output_file: str = None):
                         if line:  # Skip empty lines
                             # Validate JSON format
                             try:
-                                json.loads(line)
-                                outf.write(line + '\n')
+                                l = json.loads(line)
+                                l["language"] = repo_dict[l["repo"]]["language"]
+                                outf.write(json.dumps(l) + '\n')
                             except json.JSONDecodeError as e:
                                 print(f"  Warning: Invalid JSON in {jsonl_file.name}: {e}")
                                 continue
@@ -64,8 +74,8 @@ def main():
     )
     
     parser.add_argument(
-        'input_folder',
-        nargs='?',
+        '--input_folder',
+        dest='input_folder',
         default='output/tasks',
         help='Folder containing .jsonl files to merge (default: output/tasks)'
     )
@@ -75,11 +85,17 @@ def main():
         dest='output_file',
         help='Output file path (default: merged_tasks.jsonl in input folder)'
     )
+
+    parser.add_argument(
+        '--input_repos',
+        dest='input_repos',
+        help='The original filtered repo list'
+    )
     
     args = parser.parse_args()
     
     # Execute merge
-    success = merge_jsonl_files(args.input_folder, args.output_file)
+    success = merge_jsonl_files(args.input_folder, args.output_file, args.input_repos)
     
     if not success:
         exit(1)
