@@ -197,7 +197,6 @@ Your response:"""
         # Fallback to return code check if LLM analysis fails
         return analysis == "FAILURE"
 
-
 @auto_catch
 def reload_container(state: AgentState) -> dict:
     """
@@ -239,7 +238,6 @@ def reload_container(state: AgentState) -> dict:
         "pypiserver": server,  # Keep name for backward compatibility
         "session": session,
     }
-
 
 @auto_catch
 def organize_setup(state: AgentState, max_steps: int, timeout: int = 30) -> dict:
