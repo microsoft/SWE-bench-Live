@@ -38,6 +38,9 @@ Note: If one test suite outputs a grouped result, try your best to run each test
 You need to do it in {steps} steps.
 """
 
+VERIFY_CONVERSATION_WINDOW = 40
+TRUNCATE_LENGTH = 4000
+MAX_EXECUTION_TIME = 1800
 
 class VerifyAction(BaseModel):
     """
@@ -109,10 +112,6 @@ def parse_verify_action(response: str) -> VerifyAction | None:
     return parser.parse(response)
 
 
-
-VERIFY_CONVERSATION_WINDOW = 40
-
-
 @auto_catch
 def organize_unit_test(state: AgentState, max_steps: int, timeout: int = 30) -> dict:
     """
@@ -155,22 +154,32 @@ def organize_unit_test(state: AgentState, max_steps: int, timeout: int = 30) -> 
             return SetupObservation(content=result.to_observation(), is_stop=False)
         if action.action == "python":
             parser = action.args
-            generation_result: dict[str, str] = run_get_pertest_cmd(action.args, testcase_list)
-            pertest_command = json.dumps(generation_result)
-            test_commands = " ; ".join(generation_result.values())
+            generation_result: dict[str, str] = run_get_pertest_cmd(action.args, testcase_list) # full command list
+            pertest_command = json.dumps(generation_result) # str format
+            trucated_test_commands: dict[str, str] = {} # To be sent into LLM
+            all_len = 0
+            for k, v in generation_result.items():
+                all_len += len(v)
+                if all_len > TRUNCATE_LENGTH:
+                    break
+                trucated_test_commands[k] = v
             session = state["session"]
-            execution_result = session.send_command(test_commands)
-            execution_result = execution_result.to_observation()
+            start_time = time.time()
+            execution_result: dict[str, str] = dict()
+            for testcase in trucated_test_commands.keys():
+                execution_result[testcase] = session.send_command(trucated_test_commands[testcase]).to_observation()
+                if time.time() - start_time > MAX_EXECUTION_TIME:
+                    break
             result = f"""
-This is the "testcase name :: per-testcase excution command" mapping returned from your python script: 
-{generation_result}
+This is part of the "testcase name :: per-testcase excution command" mapping returned from your python script: 
+{json.dumps(trucated_test_commands, indent = True)}
 ==========================
-This is the shell execution result of all of the pertest execution commands returned from your python script:
-{execution_result}
+This is the shell execution result of some of the pertest execution commands returned from your python script:
+{json.dumps(execution_result, indent = True)}
 ==========================
-Please judge the correctness of your per-testcase execution commands (the commands should run one specified testcase per command, and run the specified testcase successfully with pass/fail/skip result).
+Please judge the correctness of your per-testcase execution commands (the commands should run ONLY one specified testcase per command, and run the specified testcase successfully with pass/fail/skip result).
 If correct, submit with <submit>success</submit>;
-If not correct, please explore the correct command to run a specific testcase again and write the python script to generate all per-testcase commands again;
+If not correct (some of your commands trigger more than one tests, OR many of your commands fail to execute successfully), please explore the correct command to run a specific testcase again and write the python script to generate all per-testcase commands again;
 If you think it is impossible to run each testcase separately, give up by outputting <submit>failure</submit>.
 """
             return SetupObservation(content=result, is_stop=False)
@@ -200,13 +209,16 @@ If you think it is impossible to run each testcase separately, give up by output
         platform_hints = f"\n\nNote: This is a windows server image. Use windows powershell command.\n"
     hints += platform_hints
         
+    trucated_test_status = json.dumps(state["test_status"], indent = True)
+    if len(trucated_test_status) > TRUNCATE_LENGTH:
+        trucated_test_status = trucated_test_status[:TRUNCATE_LENGTH] + "... result trucated due to length ..."
     messages = [
         SystemMessage(
             system_msg.format(
                setup_cmd=state["setup_commands"],
                test_cmd=state["test_commands"],
                parser=state["parser"],
-               test_status=state["test_status"],
+               test_status=trucated_test_status,
                steps=max_steps,
             )
         ),

@@ -57,7 +57,7 @@ def define_setup_workflow(max_trials: int = 3, max_steps_setup: int = 20, max_st
 
 # ======================================================================== #
 
-
+from launch.agent.organize.rebuild import reload_container
 from launch.agent.organize.rebuild import organize_setup
 from launch.agent.organize.testall import organize_test_cmd
 from launch.agent.organize.testone import organize_unit_test
@@ -89,6 +89,7 @@ def define_organize_workflow(max_steps: int = 20, timeout: int = 30):
     testone_agent = partial(organize_unit_test, 
                            max_steps = max_steps,
                            timeout = timeout)
+    graph.add_node("container", reload_container)
     graph.add_node("rebuild", rebuild_agent)
     graph.add_node("testall", testall_agent)
     graph.add_node("testone", testone_agent)
@@ -96,10 +97,11 @@ def define_organize_workflow(max_steps: int = 20, timeout: int = 30):
 
     graph.add_conditional_edges(
         START,
-        lambda x: "rebuild" if bool(x.get("docs", "")) else "locate_related_file",
-        {"rebuild": "rebuild", "locate_related_file": "locate_related_file"},
+        lambda x: "container" if bool(x.get("docs", "")) else "locate_related_file",
+        {"container": "container", "locate_related_file": "locate_related_file"},
     )
-    graph.add_edge("locate_related_file", "rebuild")
+    graph.add_edge("locate_related_file", "container")
+    graph.add_edge("container", "rebuild")
     
     graph.add_conditional_edges(
         "rebuild",
@@ -126,6 +128,10 @@ START
 |      /
 |     /
 |    /
+container
+|
+|
+|
 rebuild
 |    \
 |     \

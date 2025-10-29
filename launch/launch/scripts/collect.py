@@ -1,12 +1,13 @@
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 from fire import Fire
 
 def main(
     workspace: str,
     platform: Literal["linux", "windows"] = "linux",
-    step: Literal["setup", "organize"] = "setup"
+    step: Literal["setup", "organize"] = "setup",
+    instance_ids: Optional[list[str]] = None
 ):
     workspace = Path(workspace)
     playground = workspace / "playground"
@@ -28,9 +29,12 @@ def main(
             continue
         result = json.loads(result_path.read_text())
 
-        if step == "setup" and not result.get("completed", False):
+        if (instance_ids is not None) and (result["instance_id"] not in instance_ids):
             continue
-        if step == "organize" and not result.get("organize_completed", False):
+
+        if step == "setup" and (not result.get("completed", False)):
+            continue
+        if step == "organize" and (not result.get("organize_completed", False)):
             continue
         
         swe_instance = {
@@ -48,6 +52,8 @@ def main(
             swe_instance["pertest_command"] = result["pertest_command"]
         if result.get("log_parser", ""):
             swe_instance["log_parser"] = result["log_parser"]
+        if result.get("unittest_generator", ""):
+            swe_instance["per_test_command_generator"] = result["unittest_generator"]
 
         swe_instances.append(swe_instance)
 
