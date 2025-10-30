@@ -50,7 +50,7 @@ async def fetch_json(
             return {}
 
 
-async def fetch_count_from_link_header(
+async def fetch_pr_count_from_link_header(
     session: ClientSession, url: str, token_cycle, console
 ) -> int:
     while True:
@@ -73,9 +73,44 @@ async def fetch_count_from_link_header(
                 match = re.search(r'&page=(\d+)>; rel="last"', link)
                 return int(match.group(1)) if match else 0
         except Exception as e:
-            console.log(f"[red]Error fetching count from {url}: {e}[/red]")
+            console.log(f"[red]Error fetching pr count from {url}: {e}[/red]")
             return 0
 
+async def fetch_issue_count_from_search_api(
+    session: ClientSession, owner_repo: str, token_cycle, console
+) -> int:
+    """
+    Fetches the total count of all Issues (open and closed) for a repository 
+    using the GitHub Search API, which provides a 'total_count' field.
+    """
+    search_url = "https://api.github.com/search/issues"
+    query_params = {
+        "q": f"repo:{owner_repo} type:issue",
+        "per_page": 1, 
+    }
+    while True:
+        token = next(token_cycle)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github.json",
+        }  
+        try:
+            async with session.get(
+                search_url, headers=headers, params=query_params
+            ) as resp:
+                if resp.status == 403:
+                    await asyncio.sleep(1)
+                    continue
+                
+                resp.raise_for_status()
+                data = await resp.json()
+
+                total_count = data.get("total_count", 0)
+                return total_count
+
+        except Exception as e:
+            console.log(f"[red]Error fetching issue count for {owner_repo}: {e}[/red]")
+            return 0
 
 async def filter_repo(
     repo: Dict[str, Any],
@@ -97,16 +132,15 @@ async def filter_repo(
         return None
 
     owner_repo_url = f"{GITHUB_API}/repos/{full_name}"
-    issues_url = f"{owner_repo_url}/issues"
     pulls_url = f"{owner_repo_url}/pulls"
     langs_url = f"{owner_repo_url}/languages"
 
     issues_count, pulls_count, langs_data = await asyncio.gather(
-        fetch_count_from_link_header(session, issues_url, token_cycle, console),
-        fetch_count_from_link_header(session, pulls_url, token_cycle, console),
+        fetch_issue_count_from_search_api(session, full_name, token_cycle, console),
+        fetch_pr_count_from_link_header(session, pulls_url, token_cycle, console),
         fetch_json(session, langs_url, token_cycle, console),
     )
-
+    
     total = issues_count + pulls_count
     if total < criteria["min_total_pr_issues"]:
         progress.update(task_id, advance=1)
