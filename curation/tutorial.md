@@ -100,8 +100,8 @@ export TAVILY_API_KEY=...
 
 Fire your RepoLaunch run!
 ```shell
-# recommended in a tmux session, it takes long time
-python -m git_launch.run --config-path config.json
+# recommended with tmux/nohup, it takes long time
+python -m launch.run --config-path config.json
 ```
 In RepoLaunch step, each instance that is successfully set up will be committed to a Docker image, with `starryzhang` as the default namespace. An example image key: `starryzhang/sweb.eval.x86_64.streamlink_1776_streamlink-6535`. The image name part (`sweb.eval.*`) follows the same naming convention as SWE-bench.
 
