@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import modal
-import modal.container_process
-import modal.io_streams
 import tenacity
 import time
 import traceback
@@ -86,7 +84,7 @@ class ModalSandboxRuntime:
         )
 
     async def _read_stream(
-        self, stream: modal.io_streams.StreamReader, output_list: list[str]
+        self, stream, output_list: list[str]
     ):
         try:
             async for line in stream:
@@ -100,7 +98,7 @@ class ModalSandboxRuntime:
 
     async def _read_output(
         self,
-        p: modal.container_process.ContainerProcess,
+        p,
         stdout: list[str],
         stderr: list[str],
     ):
