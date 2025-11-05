@@ -77,6 +77,8 @@ class TestSpec:
         """
         If docker_specs are present, the base image key includes a hash of the specs.
         """
+        # Default to 'py' for repos not in MAP_REPO_TO_EXT (e.g., SWE-bench-Live repos)
+        repo_ext = MAP_REPO_TO_EXT.get(self.repo, "py")
         if self.docker_specs != {}:
             hash_key = str(self.docker_specs)
             hash_object = hashlib.sha256()
@@ -85,9 +87,9 @@ class TestSpec:
             val = hash_value[
                 :10
             ]  # 10 characters is still likely to be unique given only a few base images will be created
-            return f"sweb.base.{MAP_REPO_TO_EXT[self.repo]}.{self.arch}.{val}:{self.base_image_tag}"
+            return f"sweb.base.{repo_ext}.{self.arch}.{val}:{self.base_image_tag}"
         return (
-            f"sweb.base.{MAP_REPO_TO_EXT[self.repo]}.{self.arch}:{self.base_image_tag}"
+            f"sweb.base.{repo_ext}.{self.arch}:{self.base_image_tag}"
         )
 
     @property
@@ -98,6 +100,8 @@ class TestSpec:
 
         Note that old images are not automatically deleted, so consider cleaning up old images periodically.
         """
+        # Default to 'py' for repos not in MAP_REPO_TO_EXT (e.g., SWE-bench-Live repos)
+        repo_ext = MAP_REPO_TO_EXT.get(self.repo, "py")
         hash_key = str(self.env_script_list)
         if self.docker_specs != {}:
             hash_key += str(self.docker_specs)
@@ -105,7 +109,7 @@ class TestSpec:
         hash_object.update(hash_key.encode("utf-8"))
         hash_value = hash_object.hexdigest()
         val = hash_value[:22]  # 22 characters is still very likely to be unique
-        return f"sweb.env.{MAP_REPO_TO_EXT[self.repo]}.{self.arch}.{val}:{self.env_image_tag}"
+        return f"sweb.env.{repo_ext}.{self.arch}.{val}:{self.env_image_tag}"
 
     @property
     def instance_image_key(self):

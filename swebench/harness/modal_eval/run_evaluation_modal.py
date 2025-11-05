@@ -78,7 +78,7 @@ class ModalSandboxRuntime:
 
         return modal.Sandbox.create(
             image=self.image.add_local_file(
-                REMOTE_SANDBOX_ENTRYPOINT_PATH,
+                LOCAL_SANDBOX_ENTRYPOINT_PATH,
                 REMOTE_SANDBOX_ENTRYPOINT_PATH,
             ),
             timeout=timeout,
@@ -136,6 +136,10 @@ class ModalSandboxRuntime:
         p.wait()
         return "".join(stdout + stderr), p.returncode
 
+    def __enter__(self):
+        """Support for context manager protocol."""
+        return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._stream_tasks:
             try:
@@ -158,6 +162,16 @@ class ModalSandboxRuntime:
 
     @staticmethod
     def get_instance_image(test_spec: TestSpec) -> modal.Image:
+        # If using pre-built images from DockerHub, pull directly
+        if test_spec.is_remote_image:
+            print(f"Pulling pre-built image from DockerHub: {test_spec.instance_image_key}")
+            return modal.Image.from_registry(
+                test_spec.instance_image_key,
+                # DockerHub uses different architecture names
+                setup_dockerfile_commands=["WORKDIR /testbed/"]
+            )
+
+        # Otherwise, build image from scratch
         env_script = test_spec.setup_env_script
         # add trusted host flag for Modal's PyPI mirror
         env_script = env_script.replace(
@@ -198,15 +212,9 @@ class ModalSandboxRuntime:
                 "/opt/miniconda3/bin/conda config --append channels conda-forge",
                 "adduser --disabled-password --gecos 'dog' nonroot",
             )
-            .copy_local_file(Path(remote_env_script_path), remote_env_script_path)
-            .copy_local_file(Path(remote_repo_script_path), remote_repo_script_path)
-            .run_commands(
-                f"chmod +x {remote_env_script_path}",
-                f"/bin/bash -c 'source ~/.bashrc && {remote_env_script_path}'",
-                "echo 'source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed' >> /root/.bashrc",
-                f"/bin/bash {remote_repo_script_path}",
-            )
             .workdir("/testbed/")
+            .add_local_file(Path(remote_env_script_path), remote_env_script_path)
+            .add_local_file(Path(remote_repo_script_path), remote_repo_script_path)
         )
 
 

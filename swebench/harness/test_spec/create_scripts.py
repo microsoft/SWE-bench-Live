@@ -19,7 +19,8 @@ def make_repo_script_list(specs, repo, repo_directory, base_commit, env_name) ->
     Create a list of bash commands to set up the repository for testing.
     This is the setup script for the instance image.
     """
-    ext = MAP_REPO_TO_EXT[repo]
+    # Default to 'py' for repos not in MAP_REPO_TO_EXT (e.g., SWE-bench-Live repos)
+    ext = MAP_REPO_TO_EXT.get(repo, "py")
     func = {
         "py": make_repo_script_list_py,
     }.get(ext, make_repo_script_list_common)
@@ -31,7 +32,8 @@ def make_env_script_list(instance, specs, env_name) -> list:
     Creates the list of commands to set up the environment for testing.
     This is the setup script for the environment image.
     """
-    ext = MAP_REPO_TO_EXT[instance["repo"]]
+    # Default to 'py' for repos not in MAP_REPO_TO_EXT (e.g., SWE-bench-Live repos)
+    ext = MAP_REPO_TO_EXT.get(instance["repo"], "py")
     func = {
         "py": make_env_script_list_py,
     }.get(ext, make_env_script_list_common)

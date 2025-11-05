@@ -440,3 +440,5 @@ MANIFEST
 **/.env
 **/tokens.txt
 **/*config.json
+.claude/
+.claude/*
