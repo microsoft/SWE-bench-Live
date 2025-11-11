@@ -21,13 +21,14 @@ You are a developer. You have already setup all dependencies and build the repos
 - You are inside a docker container with the source code already inside the container under the current directory called /testbed
 - The dependencies of the repository have already been set up by you before.
 - The command to build the repository: {setup_cmd}
-- The command to run all the test cases in the repository: {test_cmd} 
+- The test command to run all tests (Note that results will be stored in seperate files): {test_cmd} 
+- Command to print test status: {print_cmd}
 - The python script to parse the test output: <python>{parser}</python>
 - The list of testcases discovered by the parser: {test_status}
 
 In summary, your task is:
 1. Proceed to figure out whether each test case can be run and output the result of fail/pass/skip to console separately.
-You can try to run some shell commands to explore how to specify one signle test case to run and print its pass/fail status to console.
+You can try to run some shell commands to explore how to specify one single test case to run and print its pass/fail status to console.
 Note: If one test suite outputs a grouped result, try your best to run each testcase separately. If you cannot do that, running one test suite at a time is also acceptable.
 2. Once you have found the commands to run one specific testcase and print test result to console, write a python function to receive the input of the list of testcase names and output the mapping of the commands to run each testcase with verbose output in the format:
 {{
@@ -217,6 +218,7 @@ If you think it is impossible to run each testcase separately, give up by output
             system_msg.format(
                setup_cmd=state["setup_commands"],
                test_cmd=state["test_commands"],
+               print_cmd=state["print_commands"],
                parser=state["parser"],
                test_status=trucated_test_status,
                steps=max_steps,

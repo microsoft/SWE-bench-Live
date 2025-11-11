@@ -29,7 +29,7 @@ class State(TypedDict):
     exception: Exception | None
 
 
-LANGUAGE = Literal["python", "rust", "javascript", "bash"]
+LANGUAGE = Literal["python", "rust", "javascript", "bash", "java", "c", "c++", "go", "c#"]
 
 
 class AgentState(State):
@@ -53,6 +53,7 @@ class AgentState(State):
     verify_messages: List[Union[HumanMessage, AIMessage, SystemMessage]]
     setup_commands: Annotated[List[str], operator.add]
     test_commands: List[str]
+    print_commands: List[str]
     commands: Annotated[List[str], operator.add]
     repo_root: str
     repo_structure: str
@@ -73,6 +74,8 @@ class AgentState(State):
     test_status: dict[str, str] | None
     pertest_command: dict[str, str] | None
     unittest_generator: str | None
+    original_parser: str | None
+    original_test_status: dict[str, str] | None
 
     @classmethod
     def create(
@@ -128,6 +131,7 @@ class AgentState(State):
             verify_messages=[],
             setup_commands=[],
             test_commands=[],
+            print_commands=[],
             commands=[],
             repo_root=repo_root,
             repo_structure=repo_structure,
@@ -148,7 +152,9 @@ class AgentState(State):
             parser=None,
             test_status=None,
             pertest_command=None,
-            unittest_generator=None
+            unittest_generator=None,
+            original_parser=None,
+            original_test_status=None
         )
 
 

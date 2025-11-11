@@ -22,7 +22,12 @@ for instance_id in os.listdir(args.base_dir):
         with open(result_path, "r") as f:
             d = json.load(f)
         if not d.get("completed", False):
-            # Remove the directory if "completed" is False
+            # Check exception before removing
+            exception = d.get("exception", "")
+            if "launch failed" in exception.lower():
+                print("skipping", instance_path, "- launch failed")
+                continue
+            # Remove the directory if "completed" is False and not launch failed
             print("deleting", instance_path)
             shutil.rmtree(instance_path, onexc=on_rm_error)
     

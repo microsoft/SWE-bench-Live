@@ -149,8 +149,26 @@ def start_bash_session(state: AgentState) -> dict:
     repo_root = state["repo_root"]
     logger = state["logger"]
     logger.info(f"Starting bash session in container based on image: {base_image}")
-    session = SetupRuntime.from_base_image(base_image, state["instance"], platform = state["platform"])
-    logger.info(f"Session started: {session}")
+    
+    # Docker retry configuration
+    max_docker_retries = 3
+    docker_retry_delay = 30  # seconds
+    session = None
+    
+    for attempt in range(max_docker_retries):
+        try:
+            logger.info(f"Docker attempt {attempt + 1}/{max_docker_retries}")
+            session = SetupRuntime.from_base_image(base_image, state["instance"], platform = state["platform"])
+            logger.info(f"Session started successfully: {session}")
+            break
+        except Exception as e:
+            logger.warning(f"Docker attempt {attempt + 1} failed: {str(e)}")
+            if attempt < max_docker_retries - 1:
+                logger.info(f"Waiting {docker_retry_delay} seconds before retry...")
+                time.sleep(docker_retry_delay)
+            else:
+                logger.error(f"All {max_docker_retries} Docker attempts failed. Last error: {str(e)}")
+                raise e
 
     # clean up repository in the host
     shutil.rmtree(repo_root, ignore_errors=True)
@@ -158,6 +176,7 @@ def start_bash_session(state: AgentState) -> dict:
 
     # Setup language-specific environment
     language = state["language"]
+    print(f"Setting up environment for language: {language}")
     language_handler = get_language_handler(language)
     
     logger.info(f"Setting up environment for language: {language}")
