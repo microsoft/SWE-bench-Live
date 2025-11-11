@@ -11,59 +11,105 @@ from pydantic import BaseModel, Field
 from launch.agent.action_parser import ActionParser
 from launch.agent.prompt import ReAct_prompt
 from launch.agent.state import AgentState, auto_catch
+from launch.utilities.language_handlers import get_language_handler
 
 from launch.scripts.parser import run_parser
 
 system_msg: str = """You are a developer. You have already setup all dependencies and build the repository in the current folder.
-However, for the maintainance of the project, you need to organize the minimal commands to run all test commands from scratch again and get the verbose output of "test_case -- pass/fail/skip" pairs. Then you need to write a python script to parse the test output.
+Your task is to organize the MINIMAL test commands to run ALL test cases and write a python script to parse the output and extract test case statuses.
 
-- You are inside a docker container with the source code already inside the container under the current directory called /testbed
-- The dependencies of the repository have already been set up by you before.
-- The full history commands that you used to try to set up and test the repo: {commands}. These tiral commands may be insufficient to discover all testcases. You need to find as many testcases to run as possible.
-- You have organized the minimal commands to re-build the repository again after edits to the source code: {setup_cmd} and have run the them, so you don't need to build the repository again. You should only output commands to run test cases.
+## Environment
+- You are inside a docker container with the source code at /testbed
+- Dependencies are already installed
+- Previous setup commands: {commands}
+- Re-build commands (already executed): {setup_cmd}
+- You only need to output test commands now
 
-## Note
+## THREE STEPS TO COMPLETE
 
-Your test command must output detailed pass/fail status for each test item. This is mandatory. For example, with pytest, use the -rA option to get output like:
-```
-PASSED tests/test_resources.py::test_fetch_centromeres
-PASSED tests/test_vis.py::test_to_ucsc_colorstring
-```
-or 
-```
-tests/test_resources.py::test_fetch_centromeres.............OK
-tests/test_vis.py::test_to_ucsc_colorstring......... ERROR
-```
+### STEP 1: Find Minimal Test Command & Save Output to File
+Find a test command that prints out all test cases. **IMPORTANT: Whenever possible, try to output in structured format (JSON, XML, or other machine-readable format).**
 
-Since we need to parse the test output to extract a test item -> status mapping, **this requirement is mandatory**. 
-If you observed that your test command does not produce such detailed output (test_case_name -> pass/fail/skip mapping), you must adjust it accordingly.
-If test results are written to a file not print to stdout, then find the file and output its content to console (with cat command etc.) to verify. 
-Do not print only the head and tail of the output file to console (do not use head 50 / tail 50), we need to see ALL testcase results.
+**Preferred: Use structured output (JSON/XML/etc) if framework supports it:**
+- Submit a test command that saves results in JSON or XML format to a file
+- Structured formats make parsing much easier and more reliable
+**Fallback: If NO structured format is available, use verbose text output:**
+- Submit a test command that captures all test output to a file with verbose logging
 
+**Requirements for Step 1:**
+- The command must run ALL test cases (not a subset)
+- Output must expose EVERY test case with its status (pass/fail/skip)
+- Output must be saved to a file (use `> file.txt` or `| tee file.txt`)
+- **Strongly prefer structured formats (JSON/XML) over raw logs for easier and more reliable parsing**
 
-## Note
-If one test suite / test set outputs a grouped result or contains multiple unit testcases, try your best to reveal the result of EACH unit testcase under this test suite. The testcase names in your output should be split to the finest granularity.
-If you cannot figure out, taking a test suite as one testcase is also acceptable. In this case, mark a suite with some testcases failed / error as fail, with all test cases skipped as skip, otherwise as pass.
+{test_cmd_hints}
 
-## Note
-In some corner cases the re-build commands already run all testcases directly. 
-Since later we would run re-build commands + test commands together, if you can find the testcase - status mapping in the result files of your re-build commands, you only need to submit shell commands to VIEW / REVEAL the mapping (and of course the parser script) at this step.
+### STEP 2: Print Out All Logs from the File
+After Step 1 completes, submit a command to print out all the logs/results from the file.
+- Example: `cat jest-results.json`
+- Example: `cat test-output.log`
+- Example: `cat report.json`
 
-## Note
-When trying the python script as the parser, you only need to output the parsing function parser(log:str)->dict[str, str].
-Each parser trial would return script execution results, and you can iterate until it meets the requirements.
+This step extracts the content from the file saved in Step 1.
 
+### STEP 3: Write Python Parser
+Write a python script to extract each test case and its result (pass/fail/skip) from the logs. 
+Make sure it actually run the parser to validate.
 
-In summary, your goal is:
-1. Try to find the test commands that could run ALL testcases (or as much as possible) from scratch and output detailed fail/pass/skip status for each testcase, you can iterate until it does. (this is mandatory!!!)
-2. Try to write a short python script to parse the test output to get a python dict mapping each test case name to fail/pass/skip status strictly in the python dict format:
-{{
-    "tests/test_resources.py::test_fetch_centromeres": "pass",
-    "tests/test_vis.py::test_to_ucsc_colorstring": "fail",
-    "tests/model/model_utils/test_visual.py::test_visual_full[True]": "skip",
-}}
+The parser function should:
+- Take the log output as input
+- Parse JSON/XML if available, otherwise parse text logs with regex
+- Extract test case names and their status (pass/fail/skip)
+- Return a dictionary mapping test names to status strings
 
-You need to finish it in {steps} steps.
+## Important Notes
+- Step 1: Run tests and save to file (do NOT print to console in this step)
+- Step 2: Print the file contents (this is what parser will receive)
+- Step 3: Parse the output to extract test -> status mapping
+- If test framework groups results by suite, extract per-test status where possible
+- Suppress unnecessary console noise (spinners, warnings) when saving to file in Step 1
+
+## Your Three Goals
+1. Submit test command that saves output to a file (Step 1)
+2. Submit command to print the file contents (Step 2)
+3. Write python script to extract test_name to status mapping from the output (Step 3)
+
+## Output Format for Submission
+Submit: THREE submissions required to complete:
+
+    SUBMISSION 1 - Test command (STEP 1): Run tests and save output to file
+    <submit>COMMAND_TO_RUN_TESTS_AND_SAVE_OUTPUT</submit>
+    Examples:
+        <submit>npm run test:unit -- --json --outputFile=jest-results.json</submit>
+        <submit>pytest tests/ --json-report --json-report-file=report.json</submit>
+        <submit>./mvnw test -B -Dsurefire.printSummary=false 2>&1 | tee test-output.log</submit>
+        <submit>go test ./... -v 2>&1 | tee test-output.log</submit>
+    
+    SUBMISSION 2 - Print command (STEP 2): Print the file contents
+    <submit>COMMAND_TO_PRINT_THE_OUTPUT_FILE</submit>
+    Examples:
+        <submit>cat jest-results.json</submit>
+        <submit>cat report.json</submit>
+        <submit>cat test-output.log</submit>
+        <submit>cat flink-core/target/surefire-reports/*.txt</submit>
+    
+    SUBMISSION 3 - Validate parser (STEP 3): Write and execute the parser
+    Write and execute a Python parser to extract test cases and their status from the output.
+    The parser will be automatically validated when you execute it.
+    <python>def parser(log: str) -> dict[str, str]:
+    # Extract test cases and their status from the printed output
+    import re
+    results = {{}}
+    for line in log.splitlines():
+        m = re.search(r'(\S+)\s+(PASSED|FAILED|SKIPPED)', line)
+        if m:
+            test, status = m.groups()
+            results[test] = 'pass' if 'PASSED' in status else 'fail' if 'FAILED' in status else 'skip'
+    return results</python>
+    
+    When parser is executed and validated successfully, you should invoke submit action and the process finishes.
+
+You need to finish in {steps} steps.
 """
 
 
@@ -141,13 +187,20 @@ Parse: parse the test output with python script, wrap your python script in
 
     return results</python>
 
-Submit: Stop the exploration if you find BOTH the minimal commands to run all test cases and expose the per-testcase results to console AND the minimal python script to parse test output into test_name : status dict.
-    You only need to submit the minimal commands to run all test cases and expose the per-testcase results to console in one line in the format:
-    <submit>your final test commands in one line separated by ;</submit>
-    We would re-use the last python parser script you wrote, so you do not need to output it again.
-    For example:
-    <submit>./mvnw test -B -Dsurefire.printSummary=true ; cat flink-core/target/surefire-reports/*.txt</submit>
-    <submit>./eng/common/cibuild.sh -configuration Release -prepareMachine ; cat ./artifacts/TestResults/Release/AspNet.Security.OAuth.Providers.Tests_net9.0_x64.xml</submit>
+Submit: TWO submissions required (parser is auto-stored):
+    
+    SUBMISSION 1 - Test command (STEP 1): Run tests and save output to file
+    <submit>npm run test:unit -- --json --outputFile=jest-results.json</submit>
+    <submit>pytest tests/ --json-report --json-report-file=report.json</submit>
+    <submit>go test ./... -v 2>&1 | tee test-output.log</submit>
+    
+    SUBMISSION 2 - Print command (STEP 2): Print the file contents
+    <submit>cat jest-results.json</submit>
+    <submit>cat report.json</submit>
+    <submit>cat test-output.log</submit>
+    
+    EXECUTION 3 - Execute parser (STEP 3): Write and execute parser to finish
+    After you validate your log parser, invoke submit action to finish the process
     """
 
     action: Literal["command", "search", "python", "submit"] = Field(
@@ -215,6 +268,9 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
     test_output: str = ""
     test_status: str = ""
     parser: str = ""
+    test_command: str = ""  # Store STEP 1: test command
+    print_command: str = ""  # Store STEP 2: print/cat command
+    submitted_steps: int = 0  # Track submission count (1 or 2)
 
     def observation_for_verify_action(
         state: AgentState, action: VerifyAction | None
@@ -229,7 +285,7 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
         Returns:
             SetupObservation: Result of action execution
         """
-        nonlocal test_output, test_status
+        nonlocal test_output, test_status, test_command, print_command, submitted_steps
 
         if not action or not action.action:
             content = f"""Please using following format after `Action: ` to make a valid action choice: \n{VerifyAction.__doc__}"""
@@ -240,6 +296,9 @@ def organize_test_cmd(state: AgentState, max_steps: int, timeout: int = 30) -> d
             test_output += result.output # This is full (unstripped) command output
             return SetupObservation(content=result.to_observation(), is_stop=False) # content is trucated history
         if action.action == "python":
+            if print_command != "":
+                session = state["session"]
+                test_output = session.send_command(print_command).output        
             result = run_parser(action.args, test_output)
             test_status = json.dumps(result, indent = True)
             truncated_result = test_status
@@ -259,10 +318,44 @@ If successful, please submit.
             result = state["search_tool"].invoke(action.args)
             return SetupObservation(content=json.dumps(result), is_stop=False)
         if action.action == "submit":
-            if not parser:
-                content = "Warning: It seems you have not written python scripts to parse the test output. Please try to write a python script to parse the test output! If you really cannot get per-testcase status, write an empty python function <python>def parser(log:str)->dict[str, str]:\n\treturn dict()</python> to indicate failure at the next step, and then submit again at the second step."
+            submitted_steps += 1
+            
+            # SUBMISSION 1: Test command (STEP 1) - runs tests and saves to file
+            if submitted_steps == 1:
+                test_command = action.args
+                content = f"""Received STEP 1 test command:
+{test_command}
+
+Now please explore STEP 2 and submit: a command to print/cat the output file.
+For example:
+<submit>cat jest-results.json</submit>
+or
+<submit>cat test-output.log</submit>
+"""
                 return SetupObservation(content=content, is_stop=False)
-            return SetupObservation(content=action.args, is_stop=True)
+            
+            # SUBMISSION 2: Print command (STEP 2) - prints file contents
+            elif submitted_steps == 2:
+                print_command = action.args
+                content = f"""Received STEP 2 print command:
+{print_command}
+
+Now please write a Python parser to extract test cases and their status from the output.
+Make sure to run the parser to validate. The parser will be automatically stored when you execute it.
+Use: <python>def parser(log:str)->dict[str, str]: ... return results</python>
+"""
+                return SetupObservation(content=content, is_stop=False)
+            
+            # SUBMISSION 3: Check if parser was executed and results obtained
+            elif submitted_steps == 3:
+                if parser and test_status:
+                    # Parser was executed and produced results
+                    content = "Parser validated. Test analysis complete."
+                    return SetupObservation(content=content, is_stop=True)
+                else:
+                    # Parser was not executed or produced no results
+                    content = "Note: Parser have not yet been validated. Please verify your parser runs correctly before submission to finish the process."
+                    return SetupObservation(content=content, is_stop=False)
 
     if state["exception"]:
         raise state["exception"]
@@ -281,12 +374,16 @@ If successful, please submit.
     if state["platform"] == "windows":
         platform_hints = f"\n\nNote: This is a windows server image. Use windows powershell command.\n"
     hints += platform_hints
-        
+    
+    language = state["language"]
+    language_handler = get_language_handler(language)
+    test_cmd_hints = language_handler.get_test_cmd_instructions()
     messages = [
         SystemMessage(
             system_msg.format(
                commands=history_cmds,
                setup_cmd=setup_commands,
+               test_cmd_hints=test_cmd_hints,
                steps=max_steps,
             )
         ),
@@ -338,12 +435,28 @@ If successful, please submit.
         test_status = json.loads(test_status)
     except:
         test_status = None
+    
+    # # Combine test and print commands into final list
+    # final_commands = []
+    # if test_command:
+    #     final_commands.append(test_command)
+    # if print_command:
+    #     final_commands.append(print_command)
+    
+    # # If we got both test and print commands, use them
+    # # Otherwise fall back to answer (for backwards compatibility)
+    # if final_commands:
+    #     test_commands = final_commands
+    # else:
+    #     test_commands = [answer] if answer else []
+    
     return {
         "messages": messages,
         "verify_messages": messages[prefix_messages:],
-        "test_commands": [answer],
+        "test_commands": [test_command],
+        "print_commands": [print_command],
         "commands": commands,
         "parser": parser,
         "test_status": test_status,
-        "success": bool(answer and parser and test_status),
+        "success": bool((test_command or answer) and parser and test_status),
     }

@@ -60,6 +60,7 @@ def define_setup_workflow(max_trials: int = 3, max_steps_setup: int = 20, max_st
 from launch.agent.organize.rebuild import reload_container
 from launch.agent.organize.rebuild import organize_setup
 from launch.agent.organize.testall import organize_test_cmd
+from launch.agent.organize.parselog import generate_log_parser
 from launch.agent.organize.testone import organize_unit_test
 from launch.agent.organize.save import save_organize_result
 
@@ -86,12 +87,16 @@ def define_organize_workflow(max_steps: int = 20, timeout: int = 30):
     testall_agent = partial(organize_test_cmd, 
                            max_steps = max_steps,
                            timeout = timeout)
+    parselog_agent = partial(generate_log_parser,
+                            max_steps = max_steps,
+                            timeout = timeout)
     testone_agent = partial(organize_unit_test, 
                            max_steps = max_steps,
                            timeout = timeout)
     graph.add_node("container", reload_container)
     graph.add_node("rebuild", rebuild_agent)
     graph.add_node("testall", testall_agent)
+    graph.add_node("parselog", parselog_agent)
     graph.add_node("testone", testone_agent)
     graph.add_node("save_result", save_organize_result)
 
@@ -111,6 +116,12 @@ def define_organize_workflow(max_steps: int = 20, timeout: int = 30):
     
     graph.add_conditional_edges(
         "testall",
+        lambda x: "return" if (not bool(x.get("success", False))) or bool(x.get("exception", False)) else "continue",
+        {"return": "save_result", "continue": "parselog"},
+    )
+    
+    graph.add_conditional_edges(
+        "parselog",
         lambda x: "return" if (not bool(x.get("success", False))) or bool(x.get("exception", False)) else "continue",
         {"return": "save_result", "continue": "testone"},
     )
@@ -138,7 +149,7 @@ rebuild
 |      \
 |      testall
 |      /    |
-|     /     |
+|     /     parselog
 |    /      |
 save<-----testone
 |

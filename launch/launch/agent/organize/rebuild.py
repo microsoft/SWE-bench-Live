@@ -146,7 +146,47 @@ Please using following format after `Action: ` to make a valid action choice:
         return SetupObservation(content=action.args, is_stop=True)
 
 
+@auto_catch
+def reload_container(state: AgentState) -> dict:
+    """
+    Start a Docker container with bash session for repository testing.
+    
+    Args:
+        state (AgentState): Agent state containing base image and instance info
+        
+    Returns:
+        dict: Updated state with session and pypiserver
+    """
+    repo_root = state["repo_root"]
+    logger = state["logger"]
+    session = SetupRuntime.from_launch_image(
+        image_name = state["instance"]["docker_image"],
+        instance_id = state["instance"]["instance_id"], 
+        platform = state["platform"]
+    )
 
+    # clean up repository in the host
+    shutil.rmtree(repo_root, ignore_errors=True)
+    logger.info(f"Repo root in the host cleaned up: {repo_root}")
+
+    # Setup language-specific environment
+    language = state["language"]
+    language_handler = get_language_handler(language)
+    
+    logger.info(f"Setting up environment for language: {language}")
+    server = language_handler.setup_environment(session, state["date"])
+    if server:
+        logger.info(f"Language-specific server started")
+    else:
+        logger.info("No language-specific server needed")
+
+    assert (
+        session is not None
+    ), "Session is None, please check the whether the docker is running"
+    return {
+        "pypiserver": server,  # Keep name for backward compatibility
+        "session": session,
+    }
 
 SETUP_CONVERSATION_WINDOW = 40
 

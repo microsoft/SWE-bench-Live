@@ -109,9 +109,16 @@ class TestSpec:
 
     @property
     def instance_image_key(self):
-        key = f"sweb.eval.{self.arch}.{self.instance_id.lower()}:{self.instance_image_tag}"
+        # key = f"sweb.eval.{self.arch}.{self.instance_id.lower()}:{self.instance_image_tag}"
+        # print(self.arch, self.instance_id, self.instance_image_tag, key)
+        key = f":{self.instance_id.lower()}_linux"
+        print(key)
         if self.is_remote_image:
-            key = f"{self.namespace}/{key}".replace("__", "_1776_")
+            if key.startswith(":"):
+                key = f"{self.namespace}{key}"
+                print(key)
+            else:
+                key = f"{self.namespace}/{key}".replace("__", "_1776_")
         return key
 
     @property

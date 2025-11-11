@@ -32,6 +32,11 @@ class LanguageHandler(ABC):
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup language-specific resources."""
         pass
+    
+    @abstractmethod
+    def get_test_cmd_instructions(self) -> str:
+        """Get language-specific test command instructions for the agent."""
+        pass
 
 
 class PythonHandler(LanguageHandler):
@@ -70,6 +75,27 @@ class PythonHandler(LanguageHandler):
             except Exception:
                 pass
 
+    def get_test_cmd_instructions(self) -> str:
+        return"""
+Example Test Commands for Python Projects
+- For **pytest**, run:
+  pytest --json-report --json-report-file=reports/pytest-results.json
+  (Requires the 'pytest-json-report' plugin: install via 'pip install pytest-json-report'.)
+- For **unittest (built-in)**, run:
+  python -m unittest discover -v | tee reports/unittest-results.txt
+  # Then optionally convert text to JSON using a script or tool such as 'unittest-xml-reporting':
+  python -m xmljson reports/unittest-results.xml > reports/unittest-results.json
+- For **nose2**, run:
+  nose2 --plugin nose2.plugins.json --json-report-file reports/nose2-results.json
+  (Install the JSON plugin via 'pip install nose2[json-report]'.)
+- For **behave (BDD)**, run:
+  behave --format json.pretty --outfile reports/behave-results.json
+- For **robotframework**, run:
+  robot --output reports/output.xml --log reports/log.html --report reports/report.html
+- For **pytest-bdd**, run:
+  pytest --json-report --json-report-file=reports/pytest-bdd-results.json
+"""
+
 
 class JavaScriptHandler(LanguageHandler):
     """Handler for JavaScript/Node.js projects."""
@@ -95,7 +121,24 @@ class JavaScriptHandler(LanguageHandler):
 - Consider using `npm ci` for faster, reproducible builds if package-lock.json exists
 - Install global dependencies if needed (e.g., `npm install -g typescript`)
 """
-    
+
+    def get_test_cmd_instructions(self) -> str:
+        return """
+Example Test Commands for JavaScript Frameworks:
+- For **Jest** framework, run:
+  npx jest --json --outputFile=reports/jest-results.json
+- For **Mocha** framework, run:
+  npx mocha --reporter json > reports/mocha-results.json
+- For **Vitest** framework, run:
+  npx vitest run --reporter=json > reports/vitest-results.json
+- For **AVA** framework, run:
+  npx ava --tap | npx tap-json > reports/ava-results.json
+- For **Playwright** framework, run:
+  npx playwright test --reporter=json > reports/playwright-results.json
+- For **Cypress** framework, run:
+  npx cypress run --reporter json --reporter-options "output=reports/cypress-results.json"
+"""
+
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup JavaScript environment."""
         # No special cleanup needed for JavaScript
@@ -156,6 +199,24 @@ class RustHandler(LanguageHandler):
         # No special cleanup needed for Rust
         pass
 
+    def get_test_cmd_instructions(self) -> str:
+        return """
+Example Test Commands for Rust Projects
+- For **Standard cargo test**, run:
+  cargo test -- --format json > reports/cargo-test-results.json
+  (Rust's built-in test harness supports '--format json' to emit structured test output.)
+- For **cargo nextest** (fast parallel test runner), run:
+  cargo nextest run --message-format json > reports/nextest-results.json
+  (Nextest produces detailed structured JSON for each test event — ideal for CI systems.)
+- For **libtest (Rust's built-in test framework)**, run:
+  cargo test -- --format json --report-time > reports/libtest-results.json
+- For **Cucumber-rs (BDD-style testing)**, run:
+  cargo test --features "cucumber" -- --format json > reports/cucumber-results.json
+  (Or if using the standalone binary:)
+  cargo install cucumber --version
+  cucumber --format json --output reports/cucumber-results.json
+"""
+
 
 class JavaHandler(LanguageHandler):
     """Handler for Java projects."""
@@ -184,6 +245,26 @@ class JavaHandler(LanguageHandler):
 - Install system dependencies if needed
 - Use `mvn dependency:resolve` to download dependencies
 """
+    
+    def get_test_cmd_instructions(self) -> str:
+        return """
+Example Test Commands for Java Projects
+- For **JUnit (via Maven)**, run:
+  mvn test -DtrimStackTrace=false -DoutputFormat=json -DjsonReport=reports/junit-results.json
+  (If using the Surefire plugin, you can also convert XML to JSON using tools like 'xq' or 'xml2json'.)
+- For **JUnit (via Gradle)**, run:
+  gradle test --tests "*" --info --test-output-json > reports/gradle-junit-results.json
+- For **TestNG (via Maven)**, run:
+  mvn test -DsuiteXmlFile=testng.xml -Dlistener=org.uncommons.reportng.HTMLReporter,org.uncommons.reportng.JUnitXMLReporter
+  (To get JSON, use the testng-json-listener library:
+   mvn test -Dlistener=io.github.jsonlistener.JSONReporter -DjsonOutput=reports/testng-results.json)
+- For **Cucumber (Java BDD)**, run:
+  mvn test -Dcucumber.plugin="json:reports/cucumber-results.json"
+- For **Spock (Groovy on JVM)**, run:
+  gradle test --tests "*" --info --test-output-json > reports/spock-results.json
+  (Spock runs on the JUnit platform; you can use JUnit 5 JSON report plugins for structured output.)
+"""
+
     
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup Java environment."""
@@ -224,6 +305,21 @@ class GoHandler(LanguageHandler):
 - Check go.mod for module dependencies
 - Use `go get` to install missing dependencies
 """
+    def get_test_cmd_instructions(self) -> str:
+        return """
+Example Test Commands for Go Projects:
+- For **Standard go test**, run:
+  go test -v ./... -json > reports/go-test-results.json
+- For **gotestsum** (improved test output tool), run:
+  gotestsum --format=json --jsonfile=reports/gotestsum-results.json
+- For **richgo** (colorized go test output), run:
+  richgo test -v ./... | tee reports/richgo-results.json
+- For **ginkgo** (BDD-style testing framework), run:
+  ginkgo -r --json-report=reports/ginkgo-results.json
+- For **go-convey** (web-based test reporting), run:
+  goconvey -workDir=. -cover -jsonOutput=reports/goconvey-results.json
+"""
+        return go_test_instructions
     
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup Go environment."""
@@ -269,6 +365,23 @@ class CSharpHandler(LanguageHandler):
         """Cleanup C# environment."""
         # No special cleanup needed for C#
         pass
+
+    def get_test_cmd_instructions(self) -> str:
+        return """
+Example Test Commands for C# (.NET) Projects
+- For **xUnit**, run:
+  dotnet test --logger "json;LogFileName=reports/xunit-results.json"
+- For **NUnit**, run:
+  dotnet test --logger "json;LogFileName=reports/nunit-results.json"
+  (Requires .NET 6+ with the built-in JSON logger, or install 'Microsoft.TestPlatform.Extensions.JsonLogger' if missing.)
+- For **MSTest**, run:
+  dotnet test --logger "json;LogFileName=reports/mstest-results.json"
+- For **SpecFlow (BDD)**, run:
+  dotnet test --logger "json;LogFileName=reports/specflow-results.json"
+  (SpecFlow tests run through xUnit/NUnit/MSTest, so the JSON logger works the same.)
+- For **Coverlet (code coverage)**, run:
+  dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=json /p:CoverletOutput=reports/coverage.json
+"""
 
 
 
@@ -378,6 +491,24 @@ Examples to build a repo:
         """Cleanup C/C++ environment."""
         # No special cleanup needed for C++
         pass
+
+    def get_test_cmd_instructions(self) -> str:
+        return """
+Example Test Commands for C / C++ Projects
+- For **GoogleTest (gtest)**, run:
+  ./your_test_binary --gtest_output=json:reports/gtest-results.json
+- For **Catch2**, run:
+  ./your_test_binary --reporter json > reports/catch2-results.json
+- For **doctest**, run:
+  ./your_test_binary --reporters=json > reports/doctest-results.json
+- For **CppUTest**, run:
+  ./your_test_binary -oj > reports/cpputest-results.json
+- For **CTest (CMake test runner)**, run:
+  ctest --output-log reports/ctest-results.json --output-junit reports/ctest-junit.xml
+  (CTest does not produce JSON directly, but you can use the JUnit XML output)
+- For **Boost.Test**, run:
+  ./your_test_binary --report_level=detailed --log_format=JSON --log_sink=reports/boost-results.json
+"""
 
 
 class CHandler(CppHandler):

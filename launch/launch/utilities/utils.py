@@ -103,7 +103,7 @@ def check_workspace_exists(workspace_root: Path, instance: dict) -> bool:
 
 
 def prepare_workspace(
-    workspace_root: Path, instance: dict, config: Config
+    workspace_root: Path, instance: dict, config: Config, log_file: str="setup.log"
 ) -> WorkSpace:
     """
     Prepare a complete workspace for processing a SWE-bench instance.
@@ -141,7 +141,8 @@ def prepare_workspace(
     repo_root = prepare_repo(instance, instance_folder / "repo")
     if not repo_structure:
         repo_structure = view_repo_structure(repo_root)
-    log_file = instance_folder / "setup.log"
+    log_file = instance_folder / log_file
+    
     logger = setup_logger(
         instance["instance_id"], log_file, printing=config.print_to_console
     )
