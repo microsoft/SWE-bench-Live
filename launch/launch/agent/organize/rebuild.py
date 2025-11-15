@@ -251,11 +251,6 @@ def organize_setup(state: AgentState, max_steps: int, timeout: int = 30) -> dict
     Returns:
         dict: Updated state with setup messages and commands
     """
-    state["session"] = SetupRuntime.from_launch_image(
-        image_name = state["instance"]["docker_image"],
-        instance_id = state["instance"]["instance_id"], 
-        platform = state["platform"]
-    )
 
     llm = state["llm"]
     logger = state["logger"]
