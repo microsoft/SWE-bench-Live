@@ -174,7 +174,7 @@ class RustHandler(LanguageHandler):
         if platform == "linux": 
             [f"rust:1.{v}" for v in range(70, 91)]
         if platform == "windows":
-            raise NotImplementedError("Rust does not have official windows images, build some base images yourself!")
+            [f"karinali20011210/rust-windows:1.{v}" for v in [70, 75, 80, 85, 90]]
     
     def setup_environment(self, session: SetupRuntime, date: Optional[str] = None) -> Optional[Any]:
         """Setup Rust environment."""
@@ -182,8 +182,7 @@ class RustHandler(LanguageHandler):
         return None
     
     def get_setup_instructions(self, base_image: str, platform: str = "linux") -> str:
-        if platform == "linux": 
-            return """
+        return """
 ### Rust-Specific Instructions:
 - Use `cargo build` to build the project
 - Use `cargo test` to run tests
@@ -191,8 +190,6 @@ class RustHandler(LanguageHandler):
 - Install system dependencies if needed (check Cargo.toml for sys crates)
 - Consider using `cargo install` for binary dependencies
 """
-        if platform == "windows":
-            raise NotImplementedError("search for installation guide and fill it in here!!!")
     
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup Rust environment."""
@@ -404,8 +401,9 @@ class CppHandler(LanguageHandler):
             ]
         if platform == "windows":
             return [
-                "karinali20011210/windows_server:ltsc2019",
-                "karinali20011210/windows_server:ltsc2022"
+                "karinali20011210/windows_server:ltsc2019_cmake_ninja_only",
+                "karinali20011210/windows_server:ltsc2022_cmake_ninja_only",
+                "karinali20011210/windows_server:ltsc2025_cmake_ninja_vsbuildtools_cl_msbuild"
             ]
     
     def setup_environment(self, session: SetupRuntime, date: Optional[str] = None) -> Optional[Any]:
@@ -437,7 +435,48 @@ class CppHandler(LanguageHandler):
 - For other c/cpp repository variants not covered, decide how to build the repository yourself.
 """
         if platform == "windows":
-            return r"""
+            if base_image == "karinali20011210/windows_server:ltsc2025_cmake_ninja_vsbuildtools_cl_msbuild":
+                return r"""
+### C/C++ Specific Instructions:
+This is a windows server image with git, choco, cmake, ninja, and vsbuildtools2022 with cl.exe and msbuild installed.
+
+Test these packages with: git --version; choco --version; cmake --version; ninja --version; cl.exe; msbuild --version;
+The VSbuildtools2022 has already been installed by: choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended";
+
+You need to figure out how to install other dependencies yourself. You can use web search if you are not sure.
+choco is the preferred way to install packages. For example, choco install -y mingw, choco install -y llvm
+Some dependencies may not be supported by choco and have to be installed through its official source. For example, git clone https://github.com/microsoft/vcpkg.git; .\vcpkg\bootstrap-vcpkg.bat; $env:VCPKG_ROOT = "C:\path\to\vcpkg"; $env:PATH = "$env:VCPKG_ROOT;$env:PATH";
+
+Some dependency install examples using choco:
+
+-- Qt with MSVC: 
+(installing MSVC has been done)
+choco install -y aqt --no-progress; refreshenv; 
+aqt install-qt --outputdir C:\Qt windows desktop 6.8.0 win64_msvc2019_64;
+aqt install-tool --outputdir C:\Qt windows desktop tools_qtcreator;
+aqt install-tool --outputdir C:\Qt windows desktop tools_cmake;
+
+-- Qt with MinGW: 
+choco install -y qt6-base-dev mingw; refreshenv;
+
+The installed packages often do not know the existence of each other. You need to link them manually if errors occur.
+
+Examples to build a repo:
+- Configure with CMake:
+  - `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=23`
+    - Use 20/17/11 if your project requires it
+    - Force a compiler if needed:
+      - GCC: `-DCMAKE_CXX_COMPILER=g++`
+      - Clang: `-DCMAKE_CXX_COMPILER=clang++`
+- Build the project:
+  - `cmake --build build --parallel`
+- Run tests:
+  - `ctest --test-dir build --output-on-failure`
+- Run the app:
+  - `./build/<target_name>`
+"""
+            else:
+                return r"""
 ### C/C++ Specific Instructions:
 This is a minimal windows server image with only git, choco, cmake and ninja installed.
 You need to figure out how to install the required dependencies yourself. You can use web search if you are not sure.
