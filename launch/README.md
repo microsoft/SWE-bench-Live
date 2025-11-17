@@ -3,7 +3,7 @@
 *Turning Any Codebase into Testable Sandbox Environment*
 
 RepoLaunch now supports 
-- All mainstram languages : C, C++, C#, Python, Java, Node.js (JS & TS), Go
+- All mainstram languages : C, C++, C#, Python, Java, Node.js (JS & TS), Go, Rust.
 - Building on linux-arch & windows-arch docker images.
 
 ## Launch your Repository
