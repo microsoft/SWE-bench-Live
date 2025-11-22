@@ -71,27 +71,28 @@ def save_setup_result(state: AgentState) -> dict:
     except Exception as e:
         logger.error(f"Failed to cleanup session: {e}")
 
-    with open(path, "w") as f:
-        f.write(
-            json.dumps(
-                {
-                    "instance_id": instance_id,
-                    "base_image": state["base_image"],
-                    "docker_image": state.get("docker_image", None),
-                    "setup_commands": state["setup_commands"],
-                    "test_commands": state["test_commands"],
-                    "duration": duration,
-                    "completed": state.get("success", False),
-                    "exception": exception,
-                    "repo_structure": state["repo_structure"],
-                    "docs": state["docs"],
-                },
-                indent=2,
-            )
+    result = json.dumps(
+            {
+                "instance_id": instance_id,
+                "base_image": state["base_image"],
+                "docker_image": state.get("docker_image", None),
+                "setup_commands": state["setup_commands"],
+                "test_commands": state["test_commands"],
+                "duration": duration,
+                "completed": state.get("success", False),
+                "exception": exception,
+                "repo_structure": state["repo_structure"],
+                "docs": state["docs"],
+            },
+            indent=2,
         )
+    
+    with open(path, "w") as f:
+        f.write(result)
     time.sleep(10)
     logger.info("Result saved to: " + str(path))
 
     return {
         "session": None,
+        "result": result,
     }

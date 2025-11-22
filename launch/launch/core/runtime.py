@@ -426,11 +426,14 @@ function prompt {
             self.container.stop()
             self.container.remove(force=True)
             self.stopped = True
-            if prune_dangling:
-                client = docker.from_env()
-                client.images.prune(filters={'dangling': True})
         except Exception as e:
             print(f"Failed to stop container: {e}")
+        if prune_dangling:
+            try:
+                client = docker.from_env()
+                client.images.prune(filters={'dangling': True})
+            except Exception as e:
+                print(e, "...Skipping...")
 
     def commit(self, image_name: str, tag: str = "latest", push: bool = False) -> str:
         self.container.stop()

@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import threading
 
 from launch.utilities.config import Config
 from launch.utilities.get_repo_structure import view_repo_structure
@@ -142,7 +143,6 @@ def prepare_workspace(
     if not repo_structure:
         repo_structure = view_repo_structure(repo_root)
     log_file = instance_folder / log_file
-    
     logger = setup_logger(
         instance["instance_id"], log_file, printing=config.print_to_console
     )
@@ -168,3 +168,28 @@ def prepare_workspace(
         max_steps_organize=config.max_steps_organize,
         timeout=config.timeout
     )
+
+
+
+def safe_read_result(result: str, result_path: Path, lock: threading.Lock) -> dict:
+    '''
+    Though this function looks ugly,
+    it is used to guarantee result.json is saved.
+    Because due to some minor bugs in Python thread concurrency,
+    result.json is not saved in the 'save' step successfully sometimes.
+    '''
+    with lock:
+        if result_path.exists():
+            saved_result = result_path.read_text()
+            if saved_result.strip():
+                return json.loads(saved_result)
+    if not result.strip():
+        return {
+            "completed": False, 
+            "organize_completed": False, 
+            "exception": "Result Empty Error!"
+        }
+    with lock:
+        with open(result_path, "w") as f:
+            f.write(result)
+    return json.loads(result)

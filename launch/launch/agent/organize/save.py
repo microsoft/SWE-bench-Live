@@ -81,34 +81,32 @@ def save_organize_result(state: AgentState) -> dict:
                 history = {}
     else:
         history = {}
-    with open(path, "w") as f:
-        f.write(
-            json.dumps(
-                {
-                    **history,
-                    "instance_id": instance_id,
-                    "docker_image": state.get("docker_image", state["instance"].get("docker_image", "")),
-                    "rebuild_commands": state.get("setup_commands", []),
-                    "test_commands": state.get("test_commands", []),
-                    "print_commands": state.get("print_commands", []),
-                    "test_status": state.get("test_status", {}),
-                    "pertest_command": state.get("pertest_command", {}),
-                    "log_parser": state.get("parser", ""),
-                    "unittest_generator": state.get("unittest_generator", ""),
-                    "original_log_parser": state.get("original_parser", ""),
-                    "original_test_status": state.get("original_test_status", {}),
-                    "organize_duration": duration,
-                    "organize_completed": state.get("success", False),
-                    "exception": exception,
-                    "repo_structure": state["repo_structure"],
-                    "docs": state["docs"],
-                },
-                indent=2,
-            )
+    
+    result = json.dumps(
+            {
+                **history,
+                "instance_id": instance_id,
+                "docker_image": state.get("docker_image", state["instance"].get("docker_image", "")),
+                "rebuild_commands": state.get("setup_commands", []),
+                "test_commands": state.get("test_commands", []),
+                "test_status": state.get("test_status", {}),
+                "pertest_command": state.get("pertest_command", {}),
+                "log_parser": state.get("parser", ""),
+                "unittest_generator": state.get("unittest_generator", ""),
+                "organize_duration": duration,
+                "organize_completed": state.get("success", False),
+                "exception": exception,
+                "repo_structure": state["repo_structure"],
+                "docs": state["docs"],
+            },
+            indent=2,
         )
+    with open(path, "w") as f:
+        f.write(result)
     time.sleep(10)
     logger.info("Result saved to: " + str(path))
 
     return {
         "session": None,
+        "result": result,
     }

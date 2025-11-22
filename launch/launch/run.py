@@ -24,10 +24,11 @@ from rich.progress import (
 
 from launch.core.entry import setup, organize
 from launch.utilities.config import Config, load_config
-from launch.utilities.utils import check_workspace_exists, prepare_workspace
+from launch.utilities.utils import prepare_workspace, safe_read_result
 from launch.scripts import collect
 
 lock = threading.Lock()
+
 
 def setup_instance(instance, config, workspace_root):
     """
@@ -64,24 +65,15 @@ def setup_instance(instance, config, workspace_root):
                 return "fail", instance["instance_id"], "Launch failed"
 
     try:
-        workspace = prepare_workspace(workspace_root, instance, config, "setup.log")
-        setup(instance, workspace)
-        result = workspace.result_path.read_text()
-        if result.strip():
-            result = json.loads(result)
-            if result["completed"]:
-                return "success", instance["instance_id"], None
-            else:
-                return (
-                    "fail",
-                    instance["instance_id"],
-                    result.get("exception", "Unknown error"),
-                )
+        workspace = prepare_workspace(workspace_root, instance, config)
+        result = safe_read_result(setup(instance, workspace), result_path, lock)
+        if result["completed"]:
+            return "success", instance["instance_id"], None
         else:
             return (
                 "fail",
                 instance["instance_id"],
-                "Empty result -- Unknown error",
+                result.get("exception", "Unknown error"),
             )
     except Exception as e:
         # in case unexpected error escapes previous clean-up
@@ -94,7 +86,6 @@ def setup_instance(instance, config, workspace_root):
         except Exception:
             # best-effort cleanup; don't mask the original exception
             pass
-
         return "fail", instance["instance_id"], str(e) + str(traceback.format_exc())
 
 
@@ -131,24 +122,15 @@ def organize_instance(instance, config, workspace_root):
                 return "fail", instance["instance_id"], "Organize failed"
 
     try:
-        workspace = prepare_workspace(workspace_root, instance, config, "organize.log")
-        organize(instance, workspace)
-        result = workspace.result_path.read_text()
-        if result.strip():
-            result = json.loads(result)
-            if result["organize_completed"]:
-                return "success", instance["instance_id"], None
-            else:
-                return (
-                    "fail",
-                    instance["instance_id"],
-                    result.get("exception", "Unknown error"),
-                )
+        workspace = prepare_workspace(workspace_root, instance, config)
+        result = safe_read_result(organize(instance, workspace), result_path, lock)
+        if result["organize_completed"]:
+            return "success", instance["instance_id"], None
         else:
             return (
                 "fail",
                 instance["instance_id"],
-                "Empty result -- Unknown error",
+                result.get("exception", "Unknown error"),
             )
     except Exception as e:
         # in case unexpected error escapes previous clean-up
@@ -240,7 +222,7 @@ def run_setup(config: Config, dataset: list):
                 progress.update(task, advance=1)
 
     console.rule("[bold green] Finished setting up all instances!")
-    
+
     # Log which repositories were processed
     if config.first_N_repos > 0:
         processed_repos = list(set([instance["repo"] for instance in dataset]))
@@ -262,7 +244,7 @@ def run_organize(config: Config, dataset: list):
     if config.first_N_repos > 0:
         dataset = dataset[: config.first_N_repos]
         console.print(f"[yellow]Processing first {config.first_N_repos} repositories only[/yellow]")
-        
+
     if config.instance_id:
         dataset = [
             instance
@@ -330,14 +312,13 @@ def run_organize(config: Config, dataset: list):
                 progress.update(task, advance=1)
 
     console.rule("[bold green] Finished organizing all instances!")
-    
+
     # Log which repositories were processed with their status
     if config.first_N_repos > 0:
         processed_instances = list(set([instance["instance_id"] for instance in dataset]))
         console.print(f"[blue]Processed repositories ({len(processed_instances)}):[/blue]")
         for i, instance_id in enumerate(sorted(processed_instances), 1):
             console.print(f"  {i}. {instance_id}")
-
 
 def run_launch(config_path):
     config: Config = load_config(config_path)
