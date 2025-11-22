@@ -76,6 +76,7 @@ class AgentState(State):
     unittest_generator: str | None
     original_parser: str | None
     original_test_status: dict[str, str] | None
+    result: str
 
     @classmethod
     def create(
@@ -154,7 +155,8 @@ class AgentState(State):
             pertest_command=None,
             unittest_generator=None,
             original_parser=None,
-            original_test_status=None
+            original_test_status=None,
+            result="",
         )
 
 

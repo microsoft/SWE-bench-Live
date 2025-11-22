@@ -32,7 +32,7 @@ class LanguageHandler(ABC):
     def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
         """Cleanup language-specific resources."""
         pass
-    
+
     @abstractmethod
     def get_test_cmd_instructions(self) -> str:
         """Get language-specific test command instructions for the agent."""
@@ -76,7 +76,7 @@ class PythonHandler(LanguageHandler):
                 pass
 
     def get_test_cmd_instructions(self) -> str:
-        return"""
+        return """
 Example Test Commands for Python Projects
 - For **pytest**, run:
   pytest --json-report --json-report-file=reports/pytest-results.json
@@ -121,6 +121,12 @@ class JavaScriptHandler(LanguageHandler):
 - Consider using `npm ci` for faster, reproducible builds if package-lock.json exists
 - Install global dependencies if needed (e.g., `npm install -g typescript`)
 """
+    
+    def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
+        """Cleanup JavaScript environment."""
+        # No special cleanup needed for JavaScript
+        pass
+
 
     def get_test_cmd_instructions(self) -> str:
         return """
@@ -138,11 +144,6 @@ Example Test Commands for JavaScript Frameworks:
 - For **Cypress** framework, run:
   npx cypress run --reporter json --reporter-options "output=reports/cypress-results.json"
 """
-
-    def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
-        """Cleanup JavaScript environment."""
-        # No special cleanup needed for JavaScript
-        pass
 
 
 class TypeScriptHandler(JavaScriptHandler):
@@ -172,9 +173,9 @@ class RustHandler(LanguageHandler):
     
     def base_images(self, platform = "linux") -> List[str]:
         if platform == "linux": 
-            [f"rust:1.{v}" for v in range(70, 91)]
+            return [f"rust:1.{v}" for v in range(70, 91)]
         if platform == "windows":
-            [f"karinali20011210/rust-windows:1.{v}" for v in [70, 75, 80, 85, 90]]
+            return [f"karinali20011210/rust-windows:1.{v}" for v in [70, 75, 80, 85, 90]]
     
     def setup_environment(self, session: SetupRuntime, date: Optional[str] = None) -> Optional[Any]:
         """Setup Rust environment."""
@@ -243,6 +244,11 @@ class JavaHandler(LanguageHandler):
 - Use `mvn dependency:resolve` to download dependencies
 """
     
+    def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
+        """Cleanup Java environment."""
+        # No special cleanup needed for Java
+        pass
+
     def get_test_cmd_instructions(self) -> str:
         return """
 Example Test Commands for Java Projects
@@ -261,12 +267,6 @@ Example Test Commands for Java Projects
   gradle test --tests "*" --info --test-output-json > reports/spock-results.json
   (Spock runs on the JUnit platform; you can use JUnit 5 JSON report plugins for structured output.)
 """
-
-    
-    def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
-        """Cleanup Java environment."""
-        # No special cleanup needed for Java
-        pass
 
 
 class GoHandler(LanguageHandler):
@@ -302,6 +302,12 @@ class GoHandler(LanguageHandler):
 - Check go.mod for module dependencies
 - Use `go get` to install missing dependencies
 """
+    
+    def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
+        """Cleanup Go environment."""
+        # No special cleanup needed for Go
+        pass
+
     def get_test_cmd_instructions(self) -> str:
         return """
 Example Test Commands for Go Projects:
@@ -316,12 +322,6 @@ Example Test Commands for Go Projects:
 - For **go-convey** (web-based test reporting), run:
   goconvey -workDir=. -cover -jsonOutput=reports/goconvey-results.json
 """
-        return go_test_instructions
-    
-    def cleanup_environment(self, session: SetupRuntime, server: Optional[Any] = None):
-        """Cleanup Go environment."""
-        # No special cleanup needed for Go
-        pass
 
 
 class CSharpHandler(LanguageHandler):
@@ -379,7 +379,6 @@ Example Test Commands for C# (.NET) Projects
 - For **Coverlet (code coverage)**, run:
   dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=json /p:CoverletOutput=reports/coverage.json
 """
-
 
 
 class CppHandler(LanguageHandler):
