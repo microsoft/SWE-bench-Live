@@ -127,9 +127,22 @@ def start_bash_session(state: AgentState) -> dict:
     Returns:
         dict: Updated state with session and pypiserver
     """
-    base_image = state["base_image"]
-    repo_root = state["repo_root"]
     logger = state["logger"]
+    language = state["language"]
+    language_handler = get_language_handler(language)
+
+    base_image = state["base_image"]
+    if not base_image:
+        fallback_image = (
+            language_handler.base_images[-1] if language_handler.base_images else None
+        )
+        base_image = fallback_image
+        logger.warning(
+            "Base image missing from state, defaulting to %s for language %s",
+            base_image,
+            language,
+        )
+    repo_root = state["repo_root"]
     logger.info(f"Starting bash session in container based on image: {base_image}")
     session = start_session(base_image, state["instance"])
     logger.info(f"Session started: {session}")
@@ -139,9 +152,6 @@ def start_bash_session(state: AgentState) -> dict:
     logger.info(f"Repo root in the host cleaned up: {repo_root}")
 
     # Setup language-specific environment
-    language = state["language"]
-    language_handler = get_language_handler(language)
-    
     logger.info(f"Setting up environment for language: {language}")
     server = language_handler.setup_environment(session, state["date"])
     if server:
