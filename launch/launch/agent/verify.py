@@ -168,7 +168,8 @@ def verify(max_steps: int, state: AgentState) -> dict:
             )
         response = llm.invoke(input_messages)
         # print(response.pretty_repr())
-        logger.info(response.pretty_repr())
+        if state.get("debug"):
+            logger.debug(response.pretty_repr())
         messages.append(response)
         action = parse_verify_action(response.content)
         if action.action == "command":
@@ -176,7 +177,8 @@ def verify(max_steps: int, state: AgentState) -> dict:
         observation = observation_for_verify_action(action, session)
         message = HumanMessage(f"Observation:\n{observation.content}")
         # print(message.pretty_repr())
-        logger.info(message.pretty_repr())
+        if state.get("debug"):
+            logger.debug(message.pretty_repr())
         messages.append(message)
         if action.action == "issue":
             if observation.content == "":

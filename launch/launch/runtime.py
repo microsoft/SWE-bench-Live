@@ -251,7 +251,7 @@ class SetupRuntime:
             output_segments.append(output_segment)
         return "\n".join(output_segments) + "\n" if output_segments else ""
 
-    def send_command(self, command: str, timeout: float = 20 * 60) -> CommandResult:
+    def send_command(self, command: str, timeout: float = 5 * 60) -> CommandResult:
         if not command.endswith("\n"):
             command += "\n"
 

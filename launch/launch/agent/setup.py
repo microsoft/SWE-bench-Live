@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from launch.agent.action_parser import ActionParser
 from launch.agent.prompt import ReAct_prompt
 from launch.agent.state import AgentState, auto_catch
-from launch.runtime import start_session
+from launch.runtime import TIMEOUT_EXIT_CODE, start_session
 from launch.utilities.language_handlers import get_language_handler
 
 system_msg = """You are a developer. Your task is to install dependencies and set up a environment that is able to run the tests of the project.
@@ -57,6 +57,9 @@ class SetupObservation(BaseModel):
 
     content: str = Field("", description="The content of the observation")
     is_stop: bool = Field(False, description="Whether stop the setup loop")
+    exit_code: int | None = Field(
+        None, description="Exit code of the last executed command, if any"
+    )
 
 
 class SetupActionParser(ActionParser):
@@ -108,7 +111,10 @@ Please using following format after `Action: ` to make a valid action choice:
     if action.action == "command":
         session = state["session"]
         result = session.send_command(action.args)
-        return SetupObservation(content=result.to_observation(), is_stop=False)
+        exit_code = result.metadata.exit_code if result.metadata else None
+        return SetupObservation(
+            content=result.to_observation(), is_stop=False, exit_code=exit_code
+        )
     if action.action == "search":
         result = state["search_tool"].invoke(action.args)
         return SetupObservation(content=json.dumps(result), is_stop=False)
@@ -202,8 +208,8 @@ def setup(max_steps: int, state: AgentState) -> dict:
     commands = []
     step = 0
     while step < max_steps:
-        if time.time() - state["start_time"] > 30 * 60:
-            raise TimeoutError("Reached global timeout of 30 minutes")
+        if time.time() - state["start_time"] > 10 * 60:
+            raise TimeoutError("Reached global timeout of 10 minutes")
         step += 1
         # uses a window to avoid exceed context
         commands_history = HumanMessage(
@@ -226,17 +232,22 @@ def setup(max_steps: int, state: AgentState) -> dict:
 
 
         # print(response.pretty_repr())
-        logger.info("\n" + response.pretty_repr())
+        if state.get("debug"):
+            logger.debug("\n" + response.pretty_repr())
         messages.append(response)
         action = parse_setup_action(response.content)
         if action and action.action == "command":
             commands.append(action.args)
         observation = observation_for_setup_action(state, action)
+        if observation.exit_code == TIMEOUT_EXIT_CODE:
+            logger.error("Setup command timed out (exit code %s)", observation.exit_code)
+            raise TimeoutError("Setup command timed out (exit code 124)")
         if observation.is_stop:
             break
         message = HumanMessage(f"Observation:\n{observation.content}")
         # print(observation.content)
-        logger.info("\n" + message.pretty_repr())
+        if state.get("debug"):
+            logger.debug("\n" + message.pretty_repr())
         messages.append(message)
 
     logger.info("-" * 10 + "End setup conversation" + "-" * 10)
