@@ -90,7 +90,7 @@ Thank you for your interest in submitting results to SWE-bench-Live! We coordina
 
 ## 🐳 Development
 
-If you would like to run our source code, please refer to [Development.md](./Development.md).
+If you would like to run our source code, please refer to [tutorial.md](curation/tutorial.md)
 
 ### Dataset Curation
 
