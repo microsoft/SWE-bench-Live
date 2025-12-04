@@ -7,6 +7,18 @@ from launch.agent.state import AgentState, auto_catch
 from launch.utilities.language_handlers import get_language_handler
 
 
+def _version_key(image: str) -> tuple[int, ...]:
+    """
+    Provide a tuple that increases with the semantic version embedded in the tag.
+    Falls back to (0,) if no numeric components are found.
+    """
+    _, _, version_part = image.partition(":")
+    if not version_part:
+        version_part = image
+    tokens = [int(token) for token in re.findall(r"\d+", version_part)]
+    return tuple(tokens) if tokens else (0,)
+
+
 @auto_catch
 def select_base_image(state: AgentState) -> dict:
     """
@@ -46,7 +58,9 @@ Wrap the image name in a block like <image>ubuntu:20.04</image> to indicate your
     ]
     base_image = None
     trials = 0
-    while not base_image or trials < 5:
+    max_trials = 5
+    last_response_text = ""
+    while trials < max_trials and not base_image:
         trials += 1
         response = llm.invoke(messages)
         if "<image>" in response.content:
@@ -61,6 +75,10 @@ Wrap the image name in a block like <image>ubuntu:20.04</image> to indicate your
                 )
             )
         else:
+            logger.info(
+                "Base image response missing <image> tag, retrying. Raw response: %s",
+                response_text[:500],
+            )
             messages.append(response)
             messages.append(
                 HumanMessage(
@@ -68,7 +86,17 @@ Wrap the image name in a block like <image>ubuntu:20.04</image> to indicate your
                 )
             )
 
-    logger.info(f"Selected base image: {base_image}")
+    if not base_image:
+        fallback = max(candidate_images, key=_version_key) if candidate_images else None
+        base_image = fallback
+        logger.warning(
+            "Base image selection failed after %s trials, defaulting to %s. Last response: %s",
+            max_trials,
+            base_image,
+            last_response_text[:500],
+        )
+    else:
+        logger.info(f"Selected base image: {base_image}")
     return {
         "messages": messages,
         "base_image": base_image,
