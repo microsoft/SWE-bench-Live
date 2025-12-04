@@ -31,11 +31,11 @@
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 ## News
+- **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. 
 - **09/23/2025**: We upgraded RepoLaunch Agent to support building repos on all mainstram languages (C C++ C# Python Java Go JS/TS Rust) and on both Linux&Windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require resolving dependencies and compiling again after code-fix for automated test. Swebench-Live-MultiLang will be released soon following this major advancement! For RepoLaunch preview, please refer to [RepoLaunch_Preview](https://github.com/microsoft/SWE-bench-Live/tree/repolaunch_preview/launch).
 - **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for SWE-bench-Live: **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 - **07/19/2025**: We've employed a LLM filter to automatically filter full dataset to create [SWE-bench-Live-Verified](./swebench/collect/produce/README.md). The initial Verified subset contains 500 instances from 2024-07 to 2025-04.
 - **06/30/2025**: We’ve updated the dataset — it now includes a total of **1,565** task instances across **164** repositories!
-- **05/21/2025**: The initial release of SWE-bench-Live includes 1,319 latest (created after 2024) task instances, each paired with an instance-level Docker image for test execution, covering 93 repositories.
 
 ## 📁 Repository Structure
 
@@ -83,7 +83,16 @@ python -m swebench.harness.run_evaluation \
 
 Instance-level Docker images are hosted on DockerHub.
 
-## 🐳 Dataset Curation
+
+## ⬆️ Submit your results
+
+Thank you for your interest in submitting results to SWE-bench-Live! We coordinate results submission via Pull Requests, see [SWE-bench-Live/submissions](https://github.com/swe-bench-live/submission) for instructions.
+
+## 🐳 Development
+
+If you would like to run our source code, please refer to [Development.md](./Development.md).
+
+### Dataset Curation
 
 In SWE-bench-Live, we propose an automated pipeline for curating SWE-bench-like dataset.
 
@@ -99,14 +108,11 @@ We addresses the bottleneck of setting up execution environments by automating t
 
 See [./launch](./launch/) folder for RepoLaunch code.
 
-> [!NOTE]
-> We provide a [tutorial](./curation/tutorial.md) to help you walk through the entire dataset curation process, starting from repository crawling.
+### Collaboration
 
+We welcome external collaborators to help us create more SWE tasks each month. Please contact SWE-bench-Live@microsoft.com
 
-
-## ⬆️ Submit your results
-
-Thank you for your interest in submitting results to SWE-bench-Live! We coordinate results submission via Pull Requests, see [SWE-bench-Live/submissions](https://github.com/swe-bench-live/submission) for instructions.
+Please feel free to raise issues and contribute pull requests to help us improve.
 
 ## 🙏 Acknowledgements
 
