@@ -6,7 +6,13 @@ import shutil
 import time
 from typing import Any, Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
+try:  # LangChain >= 0.3.26
+    from langchain_core.messages import (  # type: ignore[import-not-found]
+        HumanMessage,
+        SystemMessage,
+    )
+except ImportError:  # pragma: no cover
+    from langchain.schema import HumanMessage, SystemMessage  # type: ignore
 from pydantic import BaseModel, Field
 
 from launch.agent.action_parser import ActionParser
@@ -14,6 +20,7 @@ from launch.agent.prompt import ReAct_prompt
 from launch.agent.state import AgentState, auto_catch
 from launch.runtime import start_session
 from launch.utilities.language_handlers import get_language_handler
+from launch.agent.utils import message_content_to_str
 
 system_msg = """You are a developer. Your task is to install dependencies and set up a environment that is able to run the tests of the project.
 
@@ -224,11 +231,10 @@ def setup(max_steps: int, state: AgentState) -> dict:
 
         response = llm.invoke(input_messages)
 
-
         # print(response.pretty_repr())
         logger.info("\n" + response.pretty_repr())
         messages.append(response)
-        action = parse_setup_action(response.content)
+        action = parse_setup_action(message_content_to_str(response.content))
         if action and action.action == "command":
             commands.append(action.args)
         observation = observation_for_setup_action(state, action)

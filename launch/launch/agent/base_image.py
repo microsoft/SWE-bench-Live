@@ -1,9 +1,13 @@
 """
 Base Docker image selection agent for repository environment setup.
 """
-from langchain.schema import HumanMessage
+try:  # LangChain >= 0.3.26
+    from langchain_core.messages import HumanMessage  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - fallback for older LangChain
+    from langchain.schema import HumanMessage  # type: ignore
 
 from launch.agent.state import AgentState, auto_catch
+from launch.agent.utils import message_content_to_str
 from launch.utilities.language_handlers import get_language_handler
 
 
@@ -49,8 +53,9 @@ Wrap the image name in a block like <image>ubuntu:20.04</image> to indicate your
     while not base_image or trials < 5:
         trials += 1
         response = llm.invoke(messages)
-        if "<image>" in response.content:
-            image = response.content.split("<image>")[1].split("</image>")[0]
+        response_text = message_content_to_str(response.content)
+        if "<image>" in response_text:
+            image = response_text.split("<image>")[1].split("</image>")[0]
             if image in candidate_images:
                 base_image = image
                 break

@@ -3,13 +3,20 @@ Environment verification agent for testing repository setup correctness.
 """
 from typing import Any, Literal
 
-from langchain.schema import HumanMessage, SystemMessage
+try:  # LangChain >= 0.3.26
+    from langchain_core.messages import (  # type: ignore[import-not-found]
+        HumanMessage,
+        SystemMessage,
+    )
+except ImportError:  # pragma: no cover
+    from langchain.schema import HumanMessage, SystemMessage  # type: ignore
 from pydantic import BaseModel, Field
 
 from launch.agent.action_parser import ActionParser
 from launch.agent.prompt import ReAct_prompt
 from launch.agent.state import AgentState, auto_catch
 from launch.runtime import SetupRuntime
+from launch.agent.utils import message_content_to_str
 
 system_msg = """You are a developer. Your task is to verify whether the environment for the given project is set up correctly. Your colleague has set up a Docker environment for the project. You need to verify if it can successfully run the tests of the project.
 - You interact with a Bash session inside this container.
@@ -170,7 +177,7 @@ def verify(max_steps: int, state: AgentState) -> dict:
         # print(response.pretty_repr())
         logger.info(response.pretty_repr())
         messages.append(response)
-        action = parse_verify_action(response.content)
+        action = parse_verify_action(message_content_to_str(response.content))
         if action.action == "command":
             commands.append(action.args)
         observation = observation_for_verify_action(action, session)

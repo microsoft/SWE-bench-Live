@@ -3,10 +3,14 @@ Repository analysis agent for locating environment setup documentation.
 """
 import os
 
-from langchain.schema import HumanMessage
+try:  # LangChain >= 0.3.26
+    from langchain_core.messages import HumanMessage  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover
+    from langchain.schema import HumanMessage  # type: ignore
 
 from launch.agent.state import AgentState, auto_catch
 from launch.utilities.get_repo_structure import view_repo_structure
+from launch.agent.utils import message_content_to_str
 
 prompt = """Given this repository structure:
 ------ BEGIN REPOSITORY STRUCTURE ------
@@ -67,9 +71,10 @@ def locate_related_file(state: AgentState) -> dict:
         )
     
     response = llm.invoke([locate_prompt])
+    response_text = message_content_to_str(response.content)
     potential_files = [
         line.split("<file>")[1].split("</file>")[0].strip()
-        for line in response.content.split("\n")
+        for line in response_text.split("\n")
         if line.strip() and "<file>" in line
     ]
     potential_files = [
@@ -103,11 +108,12 @@ def locate_related_file(state: AgentState) -> dict:
         determine_input = HumanMessage(content=determine_prompt.format(file=file_info))
         try:
             response = llm.invoke([determine_input])
+            response_text = message_content_to_str(response.content)
         except Exception:
             logger.error(f"Error determining file: {file}")
             continue
-        logger.info(f"File: {file} - {response.content}")
-        if "<rel>Yes</rel>" in response.content:
+        logger.info(f"File: {file} - {response_text}")
+        if "<rel>Yes</rel>" in response_text:
             docs += f"File: {file}\n```\n"
             docs += content + "\n"
             docs += "```\n"
