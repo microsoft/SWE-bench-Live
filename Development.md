@@ -7,6 +7,7 @@ This tutorial walks you through how to automatically curate new issue-resolving 
 Dependencies: python, git, docker
 
 ```shell
+git clone --recursive https://github.com/microsoft/SWE-bench-Live
 pip install -e .
 pip install -e launch/.
 ```
@@ -113,7 +114,7 @@ ulimit -n 32768
 
 Export successfully set up instances to pre-validated SWE-bench-Live instances file:
 ```shell
-python to_swebench.py \
+python -m launch.utilities.to_swebench \
     --playground playground/tutorial-run \
     --output_jsonl ../curation/output/pre-validated-instances.jsonl
 ```
