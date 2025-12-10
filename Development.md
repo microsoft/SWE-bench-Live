@@ -142,7 +142,7 @@ Fire your RepoLaunch run!
 cd ../launch
 
 # recommended in a tmux session, it takes long time
-python -m git_launch.run --config-path data/your_experiment/config.json
+python -m launch.run --config-path data/your_experiment/config.json
 ```
 
 <blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
