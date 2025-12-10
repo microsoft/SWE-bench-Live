@@ -25,28 +25,13 @@
 
 ---
 
-> [!NOTE]
-> The evaluation code in this repo is forked from [SWE-bench/SWE-bench](https://github.com/SWE-bench/SWE-bench), with only minimal modifications to support evaluation on the SWE-bench-Live dataset. All other settings remain consistent with SWE-bench to reduce the migration effort. For code part, please respect the original [license](https://github.com/SWE-bench/SWE-bench/blob/main/LICENSE) from the SWE-bench repository.
-
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 ## News
-- **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. The new evaluation&validation script and tutorial for development are still on the way.
-- **09/23/2025**: We upgraded RepoLaunch Agent to support building repos on all mainstram languages (C C++ C# Python Java Go JS/TS Rust) and on both Linux&Windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require resolving dependencies and compiling again after code-fix for automated test. Swebench-Live-MultiLang will be released soon following this major advancement! For RepoLaunch preview, please refer to [RepoLaunch_Preview](https://github.com/microsoft/SWE-bench-Live/tree/repolaunch_preview/launch).
-- **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for SWE-bench-Live: **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
-- **07/19/2025**: We've employed a LLM filter to automatically filter full dataset to create [SWE-bench-Live-Verified](./swebench/collect/produce/README.md). The initial Verified subset contains 500 instances from 2024-07 to 2025-04.
-- **06/30/2025**: We’ve updated the dataset — it now includes a total of **1,565** task instances across **164** repositories!
+- **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. For more info please refer to [PR#35](https://github.com/microsoft/SWE-bench-Live/pull/35).
+- **09/23/2025**: We upgraded RepoLaunch Agent to support building repos on all mainstram languages (C C++ C# Python Java Go JS/TS Rust) and on both Linux&Windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require resolving dependencies and compiling again after code-fix for automated test. Swebench-Live-MultiLang will be released soon following this major advancement!
+- **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for huggingface dataset SWE-bench-Live/SWE-bench-Live (Python tasks): **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 
-## 📁 Repository Structure
-
-```
-├── swebench/             # Core evaluation code (a fork of SWE-bench)
-├── launch/               # RepoLaunch tool for environment setup
-├── curation/             # Curation pipeline (scripts)
-├── assets/               # Repo assets
-├── ...
-└── README.md             # This file
-```
 
 ## 🚀 Set Up
 
@@ -57,32 +42,67 @@ pip install -e .
 
 Test your installation by running:
 ```bash
-python -m swebench.harness.run_evaluation \
-    --dataset_name SWE-bench-Live/SWE-bench-Live \
+python -m evaluation.evaluation \
+    --dataset SWE-bench-Live/SWE-bench-Live \
     --split lite \
     --instance_ids amoffat__sh-744 \
-    --namespace starryzhang \
-    --predictions_path gold \
-    --max_workers 1 \
-    --run_id validate-gold
+    --platform linux \
+    --patch_dir gold \
+    --output_dir logs/test \
+    --workers 1 \
+    --overwrite 1
 ```
 
 ## 🚥 Evaluation
 
 Evaluate your model on SWE-bench-Live.
 
-```bash
-python -m swebench.harness.run_evaluation \
-    --dataset_name SWE-bench-Live/SWE-bench-Live \
-    --split <lite/full> \
-    --namespace starryzhang \
-    --predictions_path <path_to_your_preds or gold> \
-    --max_workers <num_workers> \
-    --run_id <run_id>
+Prediction patch file format:
+
+```json
+{
+    "instance_id1": {
+        "model_patch": "git diff", 
+        ...
+    },
+    "instance_id2": {
+        "model_patch": "git diff", 
+        ...
+    },
+    ...
+}
 ```
 
-Instance-level Docker images are hosted on DockerHub.
+Evaluation command:
 
+```bash
+python -m evaluation.evaluation \
+    --dataset SWE-bench-Live/SWE-bench-Live \
+    # or SWE-bench-Live/MultiLang, SWE-bench-Live/Windows
+    # or path to local dataset file like jsonl
+    --split < refer to Huggingface SWE-bench-Live > \
+    # if local jsonl file then ignore this field
+    --platform linux \
+    # or windows 
+    --patch_dir <prediction patch> \
+    --output_dir logs/test \
+    --workers 10 \
+    --overwrite 0 \
+    # 0 for no and 1 for yes
+```
+
+Instance-level Docker images are hosted on DockerHub with name:
+
+```python
+def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
+    if platform == "linux":
+        med = "x86_64"
+    else:
+        med = "win"
+    name = instance_id.replace("__", "_1776_").lower()
+    image = f"starryzhang/sweb.eval.{med}.{name}"
+    return image
+```
 
 ## ⬆️ Submit your results
 
@@ -90,7 +110,7 @@ Thank you for your interest in submitting results to SWE-bench-Live! We coordina
 
 ## 🐳 Development
 
-If you would like to run our source code, please refer to [tutorial.md](curation/tutorial.md)
+If you would like to run our source code, please refer to [Development.md](./Development.md)
 
 ### Dataset Curation
 
@@ -114,13 +134,7 @@ We welcome external collaborators to help us create more SWE tasks each month. P
 
 Please feel free to raise issues and contribute pull requests to help us improve.
 
-## 🙏 Acknowledgements
-
-SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com). We extend our gratitude to the original SWE-bench team for their pioneering work in software engineering evaluation benchmarks.
-
 ## 📚 Citation
-
-If you found the [SWE-bench-Live](https://swe-bench-live.github.io/) and [SWE-bench](https://swebench.com/) helpful for your research, please cite as follows
 
 ```bibtex
 @article{zhang2025swebenchgoeslive,
@@ -128,14 +142,6 @@ If you found the [SWE-bench-Live](https://swe-bench-live.github.io/) and [SWE-be
   author={Linghao Zhang and Shilin He and Chaoyun Zhang and Yu Kang and Bowen Li and Chengxing Xie and Junhao Wang and Maoquan Wang and Yufan Huang and Shengyu Fu and Elsie Nallipogu and Qingwei Lin and Yingnong Dang and Saravan Rajmohan and Dongmei Zhang},
   journal={arXiv preprint arXiv:2505.23419},
   year={2025}
-}
-
-@inproceedings{jimenez2024swebench,
-    title={SWE-bench: Can Language Models Resolve Real-world Github Issues?},
-    author={Carlos E Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R Narasimhan},
-    booktitle={The Twelfth International Conference on Learning Representations},
-    year={2024},
-    url={https://openreview.net/forum?id=VTF8yNQM66}
 }
 ```
 
