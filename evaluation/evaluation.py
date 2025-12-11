@@ -5,8 +5,20 @@ import argparse
 from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from swebench.harness.log_parsers.python import parse_log_pytest
 
 TIMEOUT = 20*60
+
+def default_pytest_parser(log: str) -> dict[str, str]:
+    mapping = parse_log_pytest(log, None)
+    for test in mapping.keys():
+        if 'pass' in mapping[test].lower():
+            mapping[test] = 'pass'
+        if 'skip' in mapping[test].lower():
+            mapping[test] = 'skip'
+        else:
+            mapping[test] = 'fail'
+    return mapping
 
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
@@ -33,12 +45,22 @@ def evaluate_instance(
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
-    container.send_command(rebuild_cmd, timeout=TIMEOUT)
+    if rebuild_cmd.strip():
+        container.send_command(rebuild_cmd, timeout=TIMEOUT)
+    if not print_cmd.strip():
+        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+        container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
+        test_cmd = "bash run_test.sh > testlog.out 2>&1"
+        print_cmd = "cat testlog.out"
     container.send_command(test_cmd, timeout=TIMEOUT)
     post_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w") as f:
         f.write(post_patch_log)
-    post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
+    if parser.lower().strip() == "pytest":
+        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
+    else:
+        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
     container.cleanup()
     with open(os.path.join(output_dir, "status.json"), "w") as f:
         json.dump(post_patch_status, f, indent = True)
@@ -62,9 +84,9 @@ def run_instance(
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance["rebuild_cmds"]),
-            " ; ".join(instance["test_cmds"]),
-            " ; ".join(instance["print_cmds"]),
+            " ; ".join(instance.get("rebuild_cmds", [])),
+            " ; ".join(instance.get("test_cmds", [])),
+            " ; ".join(instance.get("print_cmds", [])),
             instance["test_patch"],
             instance["pred_patch"],
             instance.get("log_parser", instance.get("parser", "")),

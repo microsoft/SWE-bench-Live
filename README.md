@@ -29,7 +29,7 @@ SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an 
 
 ## News
 - **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. For more info please refer to [PR#35](https://github.com/microsoft/SWE-bench-Live/pull/35).
-- **09/23/2025**: We upgraded RepoLaunch Agent to support building repos on all mainstram languages (C C++ C# Python Java Go JS/TS Rust) and on both Linux&Windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require resolving dependencies and compiling again after code-fix for automated test. Swebench-Live-MultiLang will be released soon following this major advancement!
+- **09/23/2025**: We upgraded RepoLaunch Agent to support building repos on all mainstram languages (C C++ C# Python Java Go JS/TS Rust) and on both Linux&Windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require resolving dependencies and compiling again after code-fix for automated test. SWE-bench-Live/MultiLang and SWE-bench-Live/Windows are being released one language at a time.
 - **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for huggingface dataset SWE-bench-Live/SWE-bench-Live (Python tasks): **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 
 
@@ -39,6 +39,11 @@ SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an 
 # Python >= 3.10
 pip install -e .
 ```
+
+Note: Though this eval script has ensured backward compatibility with SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), which uses swebench library for evaluation, if you want to evaluate on SWE-bench-Live/SWE-bench-Live (Python), for fair comparison we still recommend you to go to our old [Python-only branch](https://github.com/microsoft/SWE-bench-Live/blob/python-only/README.md) and follow the old evaluation method.
+
+The below eval script is more suitable for our new datasets SWE-bench-Live/MultiLang and SWE-bench-Live/Windows.
+
 
 Test your installation by running:
 ```bash
@@ -137,12 +142,22 @@ Please feel free to raise issues and contribute pull requests to help us improve
 ## 📚 Citation
 
 ```bibtex
+
 @article{zhang2025swebenchgoeslive,
   title={SWE-bench Goes Live!},
   author={Linghao Zhang and Shilin He and Chaoyun Zhang and Yu Kang and Bowen Li and Chengxing Xie and Junhao Wang and Maoquan Wang and Yufan Huang and Shengyu Fu and Elsie Nallipogu and Qingwei Lin and Yingnong Dang and Saravan Rajmohan and Dongmei Zhang},
   journal={arXiv preprint arXiv:2505.23419},
   year={2025}
 }
+
+@inproceedings{jimenez2024swebench,
+    title={SWE-bench: Can Language Models Resolve Real-world Github Issues?},
+    author={Carlos E Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R Narasimhan},
+    booktitle={The Twelfth International Conference on Learning Representations},
+    year={2024},
+    url={https://openreview.net/forum?id=VTF8yNQM66}
+}
+
 ```
 
 
