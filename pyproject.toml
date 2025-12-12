@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = "swebench"
-dynamic = ["version"]
+version = "1.0.0"
 authors = [
     {name = "SWE-bench team", email = "support@swebench.com"},
 ]
@@ -38,6 +38,7 @@ dependencies = [
     "fastcore",
     "fire",
     "unidiff",
+    "swebench",
 ]
 
 [project.optional-dependencies]
@@ -81,9 +82,6 @@ docs = [
 
 [tool.setuptools]
 include-package-data = true
-
-[tool.setuptools.dynamic]
-version = {attr = "swebench.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
