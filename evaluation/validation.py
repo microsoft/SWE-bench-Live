@@ -1,6 +1,7 @@
-from launch.launch.core.runtime import SetupRuntime
-from launch.launch.scripts.parser import run_parser
-import os
+import sys, os
+sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
+from launch.core.runtime import SetupRuntime
+from launch.scripts.parser import run_parser
 import json
 from typing import Literal, TypedDict
 from fire import Fire

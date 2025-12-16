@@ -1,5 +1,5 @@
 import sys
-sys.path.append("../launch")
+sys.path.insert(0, "../launch")
 from launch.utilities.llm import LLMProvider
 from fire import Fire
 from typing import Literal
@@ -30,11 +30,11 @@ class Judge:
 
     You need to classify the task into the following categories:
     1. The description is too vague so we cannot infer the {'evaluation tests' if test_prompt.strip() else 'solution patch'} from the task description.
-    2. The {'evaluation tests' if test_prompt.strip() else 'solution patch'} contain requirements not required in the task description.
+    2. The {'evaluation tests' if test_prompt.strip() else 'solution patch'} contain requirements not required in the task description, so if the coding agent only sees the task description it is unable to meet all the requirements in the {'evaluation tests' if test_prompt.strip() else 'solution patch'}.
     3. The decription already tells how to implement the solution, either in natural language or in code, so the task is too easy.
     4. The task does not have these problems.
 
-    Your answer should be only one category number: 1,2,3 or 4. Be cautious to output 1,2,3 because it would delete this task. Be tolerant so output 4 if you are not sure.
+    Your answer should be only one category number: 1,2,3 or 4. Be cautious to output 1,2,3 because it would delete this task. These tasks are expensive to create, so be tolerant and always output 4 if you are not sure.
     Your answer:
     """
         response = self.llm.invoke([

@@ -87,11 +87,6 @@ include-package-data = true
 where = ["."]
 namespaces = false
 
-[tool.uv.workspace]
-members = [
-    "launch",
-]
-
 [project.urls]
 "Documentation" = "https://github.com/swe-bench/SWE-bench"
 "Bug Reports" = "http://github.com/swe-bench/SWE-bench/issues"
