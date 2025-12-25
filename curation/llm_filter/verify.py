@@ -15,7 +15,8 @@ class Judge:
             print(0)
             return False
         if len(test_patch) > 300000:
-            test_patch = test_patch[:30000] + "......truncated."
+            print("Warning! test patch truncated due to length.")
+            test_patch = test_patch[:300000] + "......truncated."
         test_prompt = f"Testcases to evaluate whether the problem is solved: \n{test_patch}\n==============================================" if test_patch.strip() else ""
         solution_prompt = f"The ground truth patch to solve the problem: \n{gold_patch}\n=============================================="
         prompt = f"""
@@ -37,15 +38,16 @@ class Judge:
     Your answer should be only one category number: 1,2,3 or 4. Be cautious to output 1,2,3 because it would delete this task. These tasks are expensive to create, so be tolerant and always output 4 if you are not sure.
     Your answer:
     """
-        response = self.llm.invoke([
-            SystemMessage("You are an expert software engineer."),
-            HumanMessage(prompt),
-        ]).content
+        for i in range(3):
+            response = self.llm.invoke([
+                SystemMessage("You are an expert software engineer."),
+                HumanMessage(prompt),
+            ]).content
+            if "4" in response:
+                print(4)
+                return True
         print(response)
-        for pattern in ["1", "2", "3"]:
-            if pattern in response:
-                return False
-        return True
+        return False
 
 def main(input_dir: str, 
             output_dir: str, 
