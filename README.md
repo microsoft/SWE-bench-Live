@@ -63,6 +63,23 @@ python -m evaluation.evaluation \
 
 Evaluate your model on SWE-bench-Live.
 
+Collect patch diff of your agent:
+
+```bash
+# unix
+cd /testbed;
+[ -d .git ] || { g=$(find . -maxdepth 2 -mindepth 2 -type d -name .git -print -quit); [ -n "$g" ] && cd "${g%/.git}"; } ;
+git --no-pager diff HEAD  --text;
+```
+
+```powershell
+# win
+cd C:\testbed;
+if (-not (Test-Path .git)) { $g = Get-ChildItem -Directory -Recurse -Depth 2 -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '.git' } | Select-Object -First 1; if ($g) { Set-Location $g.Parent.FullName } };
+git --no-pager diff HEAD  --text;
+
+```
+
 Prediction patch file format:
 
 ```json
