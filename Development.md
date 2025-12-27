@@ -159,9 +159,12 @@ ulimit -n 32768
 
 </blockquote>
 
-The images would be committed to {image_prefix}:{instance_id}_{platform}
-
-The result file is data/examples/organize.jsonl
+Export successfully set up instances to pre-validated SWE-bench-Live instances file:
+```shell
+python -m launch.utilities.to_swebench \
+    --playground playground/tutorial-run \
+    --output_jsonl ../curation/output/pre-validated-instances.jsonl
+```
 
 ## Validation
 
