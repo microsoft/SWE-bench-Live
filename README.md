@@ -18,7 +18,7 @@
   <a href="https://swe-bench-live.github.io">
         <img alt="Leaderboard" src="https://img.shields.io/badge/leaderboard-%F0%9F%8F%86-1?style=for-the-badge">
   </a>
-  <a href="https://huggingface.co/SWE-bench-Live/datasets">
+  <a href="./assets/dataset.md">
         <img alt="dataset" src="https://img.shields.io/badge/Dataset-HF-FFD21E.svg?style=for-the-badge&logo=huggingface&logoColor=FFD21E">
   </a>
 </p>
@@ -28,11 +28,9 @@
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 ## News
-- **12/04/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. For more info please refer to [PR#35](https://github.com/microsoft/SWE-bench-Live/pull/35).
-- **09/23/2025**: We upgraded RepoLaunch Agent to support building repos on all mainstram languages (C C++ C# Python Java Go JS/TS Rust) and on both Linux&Windows platforms. We added test log parsing functionalities so test log parsing does not depend on pytest any more! We also added minimal rebuild command generation for languages that require resolving dependencies and compiling again after code-fix for automated test. Swebench-Live-MultiLang will be released soon following this major advancement! For RepoLaunch preview, please refer to [RepoLaunch_Preview](https://github.com/microsoft/SWE-bench-Live/tree/repolaunch_preview/launch).
-- **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for SWE-bench-Live: **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
-- **07/19/2025**: We've employed a LLM filter to automatically filter full dataset to create [SWE-bench-Live-Verified](./swebench/collect/produce/README.md). The initial Verified subset contains 500 instances from 2024-07 to 2025-04.
-- **06/30/2025**: We’ve updated the dataset — it now includes a total of **1,565** task instances across **164** repositories!
+- **25/12/2025**: [SWE-bench-Live Multi-Language Linux-Dist](https://huggingface.co/datasets/SWE-bench-Live/MultiLang) Dataset has been released, together with RepoLaunch that supports (C C++ C# Python Java Go JS/TS Rust) languages & (Windows, Linux) images.
+- **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. For more info please refer to [PR#35](https://github.com/microsoft/SWE-bench-Live/pull/35).
+- **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for huggingface dataset SWE-bench-Live/SWE-bench-Live (Python tasks): **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 
 
 ## 🚀 Set Up
@@ -42,7 +40,8 @@ SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an 
 pip install -e .
 ```
 
-Note: Though this eval script has ensured backward compatibility with SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), which uses swebench library for evaluation, if you want to evaluate on SWE-bench-Live/SWE-bench-Live (Python), for fair comparison we still recommend you to go to our old [Python-only branch](https://github.com/microsoft/SWE-bench-Live/blob/python-only/README.md) and follow the old evaluation method.
+> [!NOTE]
+> Though this eval script has ensured backward compatibility with SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), which uses swebench library for evaluation, if you want to evaluate on SWE-bench-Live/SWE-bench-Live (Python), for fair comparison we still recommend you to go to our old [Python-only branch](https://github.com/microsoft/SWE-bench-Live/blob/python-only/README.md) and follow the old evaluation method.
 
 The below eval script is more suitable for our new datasets SWE-bench-Live/MultiLang and SWE-bench-Live/Windows.
 
@@ -63,6 +62,23 @@ python -m evaluation.evaluation \
 ## 🚥 Evaluation
 
 Evaluate your model on SWE-bench-Live.
+
+Collect patch diff of your agent:
+
+```bash
+# unix
+cd /testbed;
+[ -d .git ] || { g=$(find . -maxdepth 2 -mindepth 2 -type d -name .git -print -quit); [ -n "$g" ] && cd "${g%/.git}"; } ;
+git --no-pager diff HEAD  --text;
+```
+
+```powershell
+# win
+cd C:\testbed;
+if (-not (Test-Path .git)) { $g = Get-ChildItem -Directory -Recurse -Depth 2 -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '.git' } | Select-Object -First 1; if ($g) { Set-Location $g.Parent.FullName } };
+git --no-pager diff HEAD  --text;
+
+```
 
 Prediction patch file format:
 

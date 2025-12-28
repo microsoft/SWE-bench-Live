@@ -156,6 +156,18 @@ Note: Some instances would require many file descriptors. If you see "too many f
 ulimit -a
 ulimit -n 32768
 ```
+</blockquote>
+
+<blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
+Note: We observe that as the execution becomes very long, the docker response (docker run container; docker commit and docker remove container) would become lower and lower and even return None. 
+In this case:
+
+```shell
+stop running launch
+restart docker
+docker container prune
+start running launch again
+```
 
 </blockquote>
 
@@ -183,3 +195,22 @@ python -m  evaluation.validation \
 ```
 
 Result is saved to `logs/examples/validated_instances.jsonl`.
+
+
+## For New Task Instance Contributors
+
+The demo to upload dataset to huggingface is 
+
+```bash
+cd curation
+hf auth login
+python push_dataset/push_multilang.py
+```
+
+The demo to upload docker image to dockerhub is 
+
+```bash
+cd launch
+docker login
+python -m launch.scripts.upload_docker --dataset ... --clear_after_push 0
+```

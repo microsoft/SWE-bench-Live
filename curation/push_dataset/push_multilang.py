@@ -4,10 +4,10 @@ import json
 ds = {}
 
 # 1. 加载原始数据集
-with open("logs/c/verified_instances.jsonl") as f:
-    ds["c"] = [json.loads(i) for i in f]
-with open("logs/cpp/verified_instances.jsonl") as f:
-    ds["cpp"] = [json.loads(i) for i in f]
+with open("logs/rust/verified_instances.jsonl") as f:
+    ds["rust"] = [json.loads(i) for i in f]
+with open("logs/go/verified_instances.jsonl") as f:
+    ds["go"] = [json.loads(i) for i in f]
 
 print("data loaded")
 
@@ -37,10 +37,12 @@ for key in ds.keys():
 
 # 2. 转换字段：pull_number 为 string，其余为 string 的数组类型
 # 你可以使用 map + features 来精确控制字段类型
- 
+
+example_split = list(ds.keys())[0]
+
 # 定义新的字段类型
 new_features = Features({
-    **ds["c"].features,  # 保留其他字段
+    **ds[example_split].features,  # 保留其他字段
     "pull_number": Value("string"),
     "docker_image": Value("string"),
     "issue_numbers": Sequence(Value("string")),
@@ -71,9 +73,15 @@ for key in ds.keys():
     # 设置新的 features
     ds[key] = ds[key].cast(new_features)
  
+# Load existing dataset with c, cpp splits
+old_dataset = load_dataset("SWE-bench-Live/MultiLang")
 
-print(len(ds["c"]))
- 
-dataset_dict = DatasetDict(ds)
- 
+# Merge: keep existing splits and add/update new ones
+merged_dict = {**old_dataset, **ds}  # ds will override if keys overlap
+
+for lang in merged_dict.keys():
+    print(lang, len(merged_dict[lang]))
+
+dataset_dict = DatasetDict(merged_dict)
+
 dataset_dict.push_to_hub("SWE-bench-Live/MultiLang")
