@@ -4,19 +4,44 @@ from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
 import json
 import argparse
+import traceback
 from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from swebench.harness.log_parsers.python import parse_log_pytest
+from enum import Enum
 
-TIMEOUT = 20*60
+TIMEOUT = 40*60
+
+
+def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
+    """
+    Copied from SWE-bench/swebench/harness/constants/__init__.py
+    """
+    class TestStatus(Enum):
+        FAILED = "FAILED"
+        PASSED = "PASSED"
+        SKIPPED = "SKIPPED"
+        ERROR = "ERROR"
+        XFAIL = "XFAIL"
+    test_status_map = {}
+    for line in log.split("\n"):
+        if any([line.startswith(x.value) for x in TestStatus]):
+            # Additional parsing for FAILED status
+            if line.startswith(TestStatus.FAILED.value):
+                line = line.replace(" - ", " ")
+            test_case = line.split()
+            if len(test_case) <= 1:
+                continue
+            test_status_map[test_case[1]] = test_case[0]
+    return test_status_map
+
 
 def default_pytest_parser(log: str) -> dict[str, str]:
     mapping = parse_log_pytest(log, None)
     for test in mapping.keys():
         if 'pass' in mapping[test].lower():
             mapping[test] = 'pass'
-        if 'skip' in mapping[test].lower():
+        elif 'skip' in mapping[test].lower():
             mapping[test] = 'skip'
         else:
             mapping[test] = 'fail'
@@ -30,6 +55,24 @@ def get_default_image_name(instance_id: str, platform: Literal["windows", "linux
     name = instance_id.replace("__", "_1776_").lower()
     image = f"starryzhang/sweb.eval.{med}.{name}"
     return image
+
+def apply_solution_patch_best_effort(solution_patch: str, 
+                                    container: SetupRuntime,
+                                    platform: Literal["windows", "linux"]) -> None:
+    '''
+    For some 1% corner cases where /testbed/repo_name is the actual project
+    '''
+    if platform == "linux":
+        container.send_command("cd /testbed")
+        container.send_command("""[ -d .git ] || { g=$(find . -maxdepth 2 -mindepth 2 -type d -name .git -print -quit); [ -n "$g" ] && cd "${g%/.git}"; } ;""")
+        container.apply_patch(solution_patch, verbose=True)
+        container.send_command("cd /testbed")
+    else:
+        container.send_command(r"cd C:\testbed")
+        container.send_command(r"""if (-not (Test-Path .git)) { $g = Get-ChildItem -Directory -Recurse -Depth 2 -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '.git' } | Select-Object -First 1; if ($g) { Set-Location $g.Parent.FullName } };""")
+        container.apply_patch(solution_patch, verbose=True)
+        container.send_command(r"cd C:\testbed")
+    return
 
 def evaluate_instance(  
                     instance_id: str,
@@ -45,7 +88,7 @@ def evaluate_instance(
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform)
     container.apply_patch(test_patch)
-    container.apply_patch(solution_patch, verbose=True)
+    apply_solution_patch_best_effort(solution_patch, container, platform)
     # Remember to rebuild after modifications to source codes !!!
     if rebuild_cmd.strip():
         container.send_command(rebuild_cmd, timeout=TIMEOUT)
@@ -76,10 +119,14 @@ def run_instance(
                 ):
     instance_output_dir = os.path.join(output_dir, instance["instance_id"])
     report_dir = os.path.join(instance_output_dir, "report.json")
-    if overwrite and os.path.exists(report_dir):
+    if (not overwrite) and os.path.exists(report_dir):
         try:
             with open(report_dir) as f:
-                return json.load(f)
+                report = json.load(f)
+                if report.get("resolved", None) is not None:
+                    suc = "Success!" if report["resolved"] else "Failed..."
+                    print(suc, "(Skipped)", instance["instance_id"], flush=True)
+                    return report
         except:
             pass
     os.makedirs(instance_output_dir, exist_ok=True)
@@ -97,12 +144,9 @@ def run_instance(
     )
     suc = [test for test in res.keys() if res[test] == 'pass']
     fail = [test for test in res.keys() if res[test] == 'fail']
-    if len(set(fail)&set(instance["PASS_TO_PASS"])) + len(set(fail)&set(instance["FAIL_TO_PASS"])) == 0:
-        resolved = True
-    else:
-        resolved = False
     report = {
-        "resolved": resolved,
+        "instance_id": instance["instance_id"],
+        "resolved": False,
         "PASS_TO_PASS": {
             "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
             "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
@@ -112,6 +156,14 @@ def run_instance(
             "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
         },
     }
+    if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
+        and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
+        and (len(report["FAIL_TO_PASS"]["success"]) > 0) :
+        report["resolved"] = True
+        print("Success!", instance["instance_id"], flush=True)
+    else:
+        print("Failed...", instance["instance_id"], flush=True)
+
     with open(report_dir, "w") as f:
         json.dump(report, f, indent = True)
     return report
@@ -123,7 +175,7 @@ def run_instances(instances: list[dict[str, str]],
                     overwrite: bool):
     empty_instance_ids = [i["instance_id"] for i in instances if not i["pred_patch"].strip()]
     results = {
-        "submitted": len(instance),
+        "submitted": len(instances),
         "submitted_ids": [i["instance_id"] for i in instances],
         "empty_patch": len(empty_instance_ids),
         "empty_patch_ids": empty_instance_ids,
@@ -148,7 +200,7 @@ def run_instances(instances: list[dict[str, str]],
                 else:
                     results["failure_ids"].append(instance["instance_id"])
             except Exception as e:
-                print(f"Error processing instance {instance['instance_id']}: {e}")
+                print(f"Error processing instance {instance['instance_id']}: {e} \n{traceback.format_exc()}")
                 results["error_ids"].append(instance["instance_id"])
     results["success"] = len(results["success_ids"])
     results["failure"] = len(results["failure_ids"])
@@ -174,7 +226,19 @@ def main(
         print(f"Loaded {len(preds)} predictions.")
     else:
         print("Running Ground Truth Patches...")
-    instances = load_dataset(dataset) if split is None else load_dataset(dataset, split=split)
+    if os.path.exists(dataset) and dataset.endswith(".jsonl"):
+        with open(dataset) as f:
+            instances = [json.loads(i) for i in f]
+    elif split is not None:
+        instances = load_dataset(dataset, split=split)
+    else:
+        instances = []
+        ds = load_dataset(dataset)
+        if hasattr(ds, "keys"):
+            for key in ds.keys():
+                instances.extend(ds[key])
+        else:
+            instances = ds
     if instance_ids is not None:
         print(f"Evaluating {instance_ids} ......")
     todos = []

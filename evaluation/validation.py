@@ -20,14 +20,11 @@ class ValidationResult(ExecutionResult):
 
 def compare(execution_res: ExecutionResult) -> ValidationResult:
     pre_pass = set()
-    pre_fail = set()
     post_pass = set()
     for test in execution_res["pre_patch_status"].keys():
         assert execution_res["pre_patch_status"][test].lower() in {'pass', 'fail', 'skip'}
         if execution_res["pre_patch_status"][test].lower() == 'pass':
             pre_pass.add(test)
-        if execution_res["pre_patch_status"][test].lower() == 'fail':
-            pre_fail.add(test)
     for test in execution_res["post_patch_status"].keys():
         assert execution_res["post_patch_status"][test].lower() in {'pass', 'fail', 'skip'}
         if execution_res["post_patch_status"][test].lower() == 'pass':
@@ -35,7 +32,7 @@ def compare(execution_res: ExecutionResult) -> ValidationResult:
     return {
         **execution_res,
         "PASS_TO_PASS": list(pre_pass&post_pass),
-        "FAIL_TO_PASS": list(pre_fail&post_pass)
+        "FAIL_TO_PASS": list(post_pass-pre_pass)
     }
 
 def validate_instance(  
@@ -70,15 +67,16 @@ def validate_instance(
         post_patch_log: str = container.send_command(print_cmd).output
         post_patch_log_accumulate += f"eval No.{check} \n\n========  \n\n{post_patch_log} \n\n"
         post_patch_status_under_inspect[check] = run_parser(parser, post_patch_log)
-    for test in post_patch_status_under_inspect[0].keys():
+    all_tests = set(post_patch_status_under_inspect[0].keys()) | set(post_patch_status_under_inspect[1].keys()) | set(post_patch_status_under_inspect[2].keys())
+    for test in all_tests:
         all_status = [
-            post_patch_status_under_inspect[0][test],
+            post_patch_status_under_inspect[0].get(test, "skip"),
             post_patch_status_under_inspect[1].get(test, "skip"),
             post_patch_status_under_inspect[2].get(test, "skip")
         ]
         if 'fail' in all_status:
             post_patch_status[test] = 'fail'
-        if 'skip' in all_status:
+        elif 'skip' in all_status:
             post_patch_status[test] = 'skip'
         else:
             post_patch_status[test] = 'pass'
