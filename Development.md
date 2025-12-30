@@ -60,30 +60,76 @@ mkdir -p job_status
     --path-tasks output/tasks \
     --output-dir output/split_jobs
 
-python swe_task_crawling/merge_tasks.py -o output/raw_tasks.jsonl
+
+python swe_task_crawling/merge_tasks.py \
+    --input_folder output/tasks \
+    --input_repos output/filtered_repos.jsonl \
+    --output output/raw_tasks.jsonl
+```
+
+## Simple Filtering based on LLM Judge
+
+
+### Verify the quality of instances
+
+This step basically follows the idea of SWE-bench-Verified to filter instance with
+
+1. Vague problem statements;
+2. Test patches with requirements not required in problem statements;
+3. Answer in problem statement.
+
+Prepare your llm API Key.
+
+```shell
+export OPENAI_API_KEY=...
+
+python -m llm_filter.verify \
+    --input_dir output/raw_tasks.jsonl \
+    --output_dir  output/verified_tasks.jsonl \
+    --llm_provider  AOAI \
+    --model_name   gpt-5-20250807
+```
+
+### Split windows-specific tasks VS general tasks
+
+```shell
+python -m llm_filter.split_os \
+    --input_file output/raw_tasks.jsonl  \
+    --windows_file  output/windows_tasks.jsonl \
+    --general_file  output/general_tasks.jsonl \
+    --llm_provider  AOAI \
+    --model_name   gpt-5-20250807
 ```
 
 ## Execution Env Setup with `RepoLaunch`
 
 Next, we will use `RepoLaunch` to attempt to create an execution environment for each task instance to support test execution.
 
-```shell
-cd ../launch
-```
-
-Create a run config for RepoLaunch and save it in `config.json`:
+Create a run config for RepoLaunch and save it in `launch/data/your_experiment/config.json`. The example config.json in `launch/data/examples` is:
 ```json
 {
+    "mode": {
+        "setup": true,
+        "organize": true
+    },
     "llm_provider_name": "OpenAI",
     "model_config": {        
-        "model_name": "gpt-4.1",
+        "model_name": "gpt-4.1-20250414",
         "temperature": 0.0
     },
-    "workspace_root": "playground/tutorial-run/",
-    "dataset": "../curation/output/raw_tasks.jsonl",
+    "workspace_root": "data/examples/",
+    "dataset": "data/examples/dataset.jsonl",
     "print_to_console": false,
+    "first_N_repos": -1,
+    "overwrite": false,
     "max_workers": 5,
-    "overwrite": false
+    "os": "linux",
+    "max_trials": 2,
+    "max_steps_setup": 60,
+    "max_steps_verify": 20,
+    "max_steps_organize": 30,
+    "timeout": 60,
+    "image_prefix": "repolaunch/dev"
 }
 ```
 
@@ -97,10 +143,11 @@ export TAVILY_API_KEY=...
 
 Fire your RepoLaunch run!
 ```shell
+cd ../launch
+
 # recommended in a tmux session, it takes long time
-python -m git_launch.run --config-path config.json
+python -m launch.run --config-path data/your_experiment/config.json
 ```
-In RepoLaunch step, each instance that is successfully set up will be committed to a Docker image, with `starryzhang` as the default namespace. An example image key: `starryzhang/sweb.eval.x86_64.streamlink_1776_streamlink-6535`. The image name part (`sweb.eval.*`) follows the same naming convention as SWE-bench.
 
 <blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
 
@@ -108,6 +155,18 @@ Note: Some instances would require many file descriptors. If you see "too many f
 ```shell
 ulimit -a
 ulimit -n 32768
+```
+</blockquote>
+
+<blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
+Note: We observe that as the execution becomes very long, the docker response (docker run container; docker commit and docker remove container) would become lower and lower and even return None. 
+In this case:
+
+```shell
+stop running launch
+restart docker
+docker container prune
+start running launch again
 ```
 
 </blockquote>
@@ -125,54 +184,33 @@ In this step we apply gold patches to instances, run test cases, and get `FAIL_T
 
 ```shell
 # cd in repo root
-cd ..
+cd ../
 
-python -m swebench.harness.run_validation \
-    --dataset_name curation/output/pre-validated-instances.jsonl \
-    --predictions_path gold \
-    --max_workers 10 \
-    --run_id tutorial-validation \
-    --namespace starryzhang
+python -m  evaluation.validation \
+    --input_dir launch/data/your_experiment/organize.jsonl \
+    --output_dir logs/examples \
+    --platform  linux \#or windows
+    --workers  4 \
+    --overwrite  0 \# or 1 for yes
 ```
 
-## Production
+Result is saved to `logs/examples/validated_instances.jsonl`.
 
-This step writes valid instances with both `FAIL_TO_PASS` and `PASS_TO_PASS` test cases to final dataset.
 
-```shell
-python swebench/collect/produce/make_full.py \
-    --input-dir logs/run_evaluation/tutorial-validation/gold \
-    --output-dir datasets
+## For New Task Instance Contributors
 
-# If you want to merge with old data we published
-python swebench/collect/produce/merge_with_old.py \
-    --input-dir "datasets/full-{today}.jsonl"
+The demo to upload dataset to huggingface is 
 
-python swebench/collect/produce/make_lite.py \
-    --start-month 2024-12 --end-month 2025-05 
-    # If you want to control month range to sample from
-
-python -m swebench.collect.produce.make_verified \
-    --start-month 2024-06 --end-month 2025-05 \
-    --provider OpenAI --model o3-20250416 
-    # Optional --input-file datasets/full-{date}.jsonl
+```bash
+cd curation
+hf auth login
+python push_dataset/push_multilang.py
 ```
 
-The default output files are: 
+The demo to upload docker image to dockerhub is 
 
-- `datasets/full-{today}.jsonl`
-- `datasets/lite-{today}.jsonl`
-- `datasets/verified-{today}.jsonl` & `datasets/verified-log-{today}.jsonl` (LLM's reasons to filter)
-
-where `{today}` is the current date in ISO format (e.g., `2025-01-15`).
-
-To quickly check whether all instances can be solved by the gold patches (usually they do), run
-
-```shell
-python -m swebench.harness.run_evaluation \
-  --dataset_name datasets/full-{today}.jsonl \
-  --split full \
-  --predictions_path gold \
-  --run_id tutorial-validation \
-  --rewrite_reports true
+```bash
+cd launch
+docker login
+python -m launch.scripts.upload_docker --dataset ... --clear_after_push 0
 ```

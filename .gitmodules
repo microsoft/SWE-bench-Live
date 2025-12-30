@@ -1,4 +1,3 @@
 [submodule "launch"]
 	path = launch
 	url = https://github.com/microsoft/RepoLaunch
-	branch = v0.2-python-only-stable
