@@ -142,8 +142,8 @@ def run_instance(
             platform,
             instance_output_dir
     )
-    suc = [test for test in res.keys() if res[test] == 'pass']
-    fail = [test for test in res.keys() if res[test] == 'fail']
+    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
+    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
