@@ -173,7 +173,14 @@ def run_instances(instances: list[dict[str, str]],
                     workers: int,
                     output_dir: str,
                     overwrite: bool):
-    empty_instance_ids = [i["instance_id"] for i in instances if not i["pred_patch"].strip()]
+    todos = []
+    empty_instance_ids = []
+    for i in instances:
+        if i["pred_patch"].strip():
+            todos.append(i)
+        else:
+            empty_instance_ids.append(i["instance_id"])
+            print("Empty patch...", i["instance_id"], flush=True)
     results = {
         "submitted": len(instances),
         "submitted_ids": [i["instance_id"] for i in instances],
@@ -187,7 +194,7 @@ def run_instances(instances: list[dict[str, str]],
         # Submit tasks to the executor
         future_to_instance = {
             executor.submit(run_instance, instance, platform, output_dir, overwrite): instance
-            for instance in instances
+            for instance in todos
         }
 
         # Collect results as they complete

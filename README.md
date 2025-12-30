@@ -97,6 +97,34 @@ Prediction patch file format:
 
 Evaluation command:
 
+```bash
+python -m evaluation.evaluation \
+    --dataset SWE-bench-Live/SWE-bench-Live \
+    # or SWE-bench-Live/MultiLang, SWE-bench-Live/Windows
+    # or path to local dataset file like jsonl
+    --split < refer to Huggingface SWE-bench-Live > \
+    # if local jsonl file then ignore this field
+    --platform linux \
+    # or windows 
+    --patch_dir <prediction patch> \
+    --output_dir logs/test \
+    --workers 10 \
+    --overwrite 0 \
+    # 0 for no and 1 for yes
+```
+
+Instance-level Docker images are hosted on DockerHub with name:
+
+```python
+def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
+    if platform == "linux":
+        med = "x86_64"
+    else:
+        med = "win"
+    name = instance_id.replace("__", "_1776_").lower()
+    image = f"starryzhang/sweb.eval.{med}.{name}"
+    return image
+```
 
 ## ⬆️ Submit your results
 
