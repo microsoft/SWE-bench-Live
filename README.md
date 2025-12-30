@@ -49,9 +49,8 @@ The below eval script is more suitable for our new datasets SWE-bench-Live/Multi
 Test your installation by running:
 ```bash
 python -m evaluation.evaluation \
-    --dataset SWE-bench-Live/SWE-bench-Live \
-    --split lite \
-    --instance_ids amoffat__sh-744 \
+    --dataset SWE-bench-Live/MultiLang \
+    --instance_ids rsyslog__rsyslog-6047 \
     --platform linux \
     --patch_dir gold \
     --output_dir logs/test \
@@ -119,21 +118,18 @@ In SWE-bench-Live, we propose an automated pipeline for curating SWE-bench-like 
 
 ### RepoLaunch
 
-We addresses the bottleneck of setting up execution environments by automating the process through an LLM-based agentic tool – [RepoLaunch](./launch/README.md). It can deliver a testable containerized environment for any given GitHub repository, thereby enabling test-based evaluation in SWE-bench-Live. 
-
-See [./launch](./launch/) folder for RepoLaunch code.
+We addresses the bottleneck of setting up execution environments by automating the process through an LLM-based agentic tool – [RepoLaunch](https://github.com/microsoft/RepoLaunch). It can deliver a testable containerized environment for any given GitHub repository, thereby enabling test-based evaluation in SWE-bench-Live. 
 
 ### Collaboration
 
-We welcome external collaborators to help us create more SWE tasks each month. Please contact SWE-bench-Live@microsoft.com
+We welcome external collaborators to help us create more SWE tasks each month, and improve curation and launch source code. Please contact SWE-bench-Live@microsoft.com
 
 Please feel free to raise issues and contribute pull requests to help us improve.
 
-## 🙏 Acknowledgements
-
-SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com). We extend our gratitude to the original SWE-bench team for their pioneering work in software engineering evaluation benchmarks.
 
 ## 📚 Citation
+
+SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com). We extend our gratitude to the original SWE-bench team for their pioneering work in software engineering evaluation benchmarks.
 
 ```bibtex
 
