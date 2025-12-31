@@ -7,6 +7,7 @@ This tutorial walks you through how to automatically curate new issue-resolving 
 Dependencies: python, git, docker
 
 ```shell
+docker ps # make sure docker is running and you have privilage
 git clone --recursive https://github.com/microsoft/SWE-bench-Live
 pip install -e .
 pip install -e launch/.
@@ -171,12 +172,6 @@ start running launch again
 
 </blockquote>
 
-Export successfully set up instances to pre-validated SWE-bench-Live instances file:
-```shell
-python -m launch.utilities.to_swebench \
-    --playground playground/tutorial-run \
-    --output_jsonl ../curation/output/pre-validated-instances.jsonl
-```
 
 ## Validation
 
@@ -187,7 +182,7 @@ In this step we apply gold patches to instances, run test cases, and get `FAIL_T
 cd ../
 
 python -m  evaluation.validation \
-    --input_dir launch/data/your_experiment/organize.jsonl \
+    --input_dir launch/data/examples/organize.jsonl \
     --output_dir logs/examples \
     --platform  linux \#or windows
     --workers  4 \
