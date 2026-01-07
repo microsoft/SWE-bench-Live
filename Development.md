@@ -181,12 +181,24 @@ In this step we apply gold patches to instances, run test cases, and get `FAIL_T
 # cd in repo root
 cd ../
 
+# Get Fail to Pass
+# apply test_patch -> build -> apply gold_patch -> build
+# test is run 3 times automatically in validation.py to filter flaky instances
 python -m  evaluation.validation \
     --input_dir launch/data/examples/organize.jsonl \
-    --output_dir logs/examples \
+    --output_dir logs/val \
     --platform  linux \#or windows
     --workers  4 \
-    --overwrite  0 \# or 1 for yes
+    --overwrite  0 # or 1 for yes
+
+# filter instances that fail when only apply test_patch -> apply gold_patch -> build
+python -m  evaluation.validation \
+    --dataset logs/val/validated_instances.jsonl \
+    --output_dir logs/eval \
+    --patch_dir gold \
+    --platform  linux \#or windows
+    --workers  4 \
+    --overwrite  0 # or 1 for yes
 ```
 
 Result is saved to `logs/examples/validated_instances.jsonl`.
