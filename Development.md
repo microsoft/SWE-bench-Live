@@ -201,7 +201,7 @@ python -m  evaluation.evaluation \
     --overwrite  0 # or 1 for yes
 ```
 
-Result is saved to `logs/examples/validated_instances.jsonl`.
+Result is saved to `logs/eval/gold_patch_evaluated_instances.jsonl`.
 
 
 ## For New Task Instance Contributors
