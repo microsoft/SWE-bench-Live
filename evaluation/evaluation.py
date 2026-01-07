@@ -265,6 +265,11 @@ def main(
     print("Empty:", results["empty_patch"])
     print("Error:", results["error"])
     print("Evaluation ended successfully.")
+    if patch_dir.strip() == "gold":
+        with open(os.path.join(output_dir, "gold_patch_evaluated_instances.jsonl"), "w") as f:
+            for instance in instances:
+                if instance["instance_id"] in results["success_ids"]:
+                    f.write(json.dumps(instance)+"\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate SWE-bench instances")
