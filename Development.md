@@ -192,7 +192,7 @@ python -m  evaluation.validation \
     --overwrite  0 # or 1 for yes
 
 # filter instances that fail when only apply test_patch -> apply gold_patch -> build
-python -m  evaluation.validation \
+python -m  evaluation.evaluation \
     --dataset logs/val/validated_instances.jsonl \
     --output_dir logs/eval \
     --patch_dir gold \
