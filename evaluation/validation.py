@@ -26,7 +26,6 @@ def compare(execution_res: ExecutionResult) -> ValidationResult:
         if execution_res["pre_patch_status"][test].lower() == 'pass':
             pre_pass.add(test)
     for test in execution_res["post_patch_status"].keys():
-        assert execution_res["post_patch_status"][test].lower() in {'pass', 'fail', 'skip'}
         if execution_res["post_patch_status"][test].lower() == 'pass':
             post_pass.add(test)
     return {
@@ -53,9 +52,14 @@ def validate_instance(
     container.send_command(rebuild_cmd, timeout=TIMEOUT)
     container.send_command(test_cmd, timeout=TIMEOUT)
     pre_patch_log: str = container.send_command(print_cmd).output
-    with open(os.path.join(output_dir, "pre_patch_log.txt"), "w") as f:
+    with open(os.path.join(output_dir, "pre_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(pre_patch_log)
     pre_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, pre_patch_log)
+    container.cleanup()
+    del container
+
+    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform)
+    container.apply_patch(test_patch, verbose=True)
     container.apply_patch(solution_patch, verbose=True)
     container.send_command(rebuild_cmd, timeout=TIMEOUT)
     post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = {}
@@ -70,19 +74,23 @@ def validate_instance(
     all_tests = set(post_patch_status_under_inspect[0].keys()) | set(post_patch_status_under_inspect[1].keys()) | set(post_patch_status_under_inspect[2].keys())
     for test in all_tests:
         all_status = [
-            post_patch_status_under_inspect[0].get(test, "skip"),
-            post_patch_status_under_inspect[1].get(test, "skip"),
-            post_patch_status_under_inspect[2].get(test, "skip")
+            post_patch_status_under_inspect[0].get(test, "skip").lower(),
+            post_patch_status_under_inspect[1].get(test, "skip").lower(),
+            post_patch_status_under_inspect[2].get(test, "skip").lower(),
         ]
+        assert all_status[0] in {'pass', 'fail', 'skip'}
+        assert all_status[1] in {'pass', 'fail', 'skip'}
+        assert all_status[2] in {'pass', 'fail', 'skip'}
         if 'fail' in all_status:
             post_patch_status[test] = 'fail'
         elif 'skip' in all_status:
             post_patch_status[test] = 'skip'
         else:
             post_patch_status[test] = 'pass'
-    with open(os.path.join(output_dir, "post_patch_log.txt"), "w") as f:
+    with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log_accumulate)
     container.cleanup()
+    
     res: ValidationResult = compare({
         "instance_id": instance_id,
         "pre_patch_status": pre_patch_status,
@@ -91,7 +99,7 @@ def validate_instance(
     print(instance_id, ": num of fail_to_pass:", len(res["FAIL_TO_PASS"]), flush=True)
     if len(res["FAIL_TO_PASS"]) > 0:
         print("Find one valid instance:", instance_id, flush=True)
-    with open(os.path.join(output_dir, "status.json"), "w") as f:
+    with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(res, f, indent = True)
     return res
 
@@ -101,7 +109,7 @@ def run_instance(instance: dict[str, str],
                     overwrite: bool) -> ValidationResult:
     instance_output_dir = os.path.join(output_dir, instance["instance_id"])
     if (not overwrite) and os.path.exists(os.path.join(instance_output_dir, "status.json")):
-        with open(os.path.join(instance_output_dir, "status.json")) as f:
+        with open(os.path.join(instance_output_dir, "status.json"), encoding="utf-8") as f:
             try:
                 report = json.load(f)
                 print("Skipping", instance["instance_id"], "num of fail_to_pass:", len(report["FAIL_TO_PASS"]), flush=True)
@@ -157,13 +165,13 @@ def main(
             output_dir: str, 
             overwrite: int,
         ):
-    with open(input_dir) as f:
+    with open(input_dir, encoding="utf-8") as f:
         instances = [json.loads(i) for i in f]
     print(f"Loaded {len(instances)} instances.")
     results = run_instances(instances, platform, workers, output_dir, overwrite != 0)
     filtered_res = [i for i in results if len(i["FAIL_TO_PASS"]) > 0]
     print(f"Saved {len(filtered_res)} valid instances.")
-    with open(os.path.join(output_dir, "validated_instances.jsonl"), "w") as f:
+    with open(os.path.join(output_dir, "validated_instances.jsonl"), "w", encoding="utf-8") as f:
         for i in filtered_res:
             f.write(json.dumps(i)+"\n")
 
