@@ -88,7 +88,7 @@ def evaluate_instance(
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform)
     container.apply_patch(test_patch)
-    apply_solution_patch_best_effort(solution_patch, container, platform)
+    container.apply_patch(solution_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
     if rebuild_cmd.strip():
         container.send_command(rebuild_cmd, timeout=TIMEOUT)
@@ -99,7 +99,7 @@ def evaluate_instance(
         print_cmd = "cat testlog.out"
     container.send_command(test_cmd, timeout=TIMEOUT)
     post_patch_log: str = container.send_command(print_cmd).output
-    with open(os.path.join(output_dir, "post_patch_log.txt"), "w") as f:
+    with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
     if parser.lower().strip() == "pytest":
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
@@ -107,7 +107,7 @@ def evaluate_instance(
     else:
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
     container.cleanup()
-    with open(os.path.join(output_dir, "status.json"), "w") as f:
+    with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
 
@@ -121,7 +121,7 @@ def run_instance(
     report_dir = os.path.join(instance_output_dir, "report.json")
     if (not overwrite) and os.path.exists(report_dir):
         try:
-            with open(report_dir) as f:
+            with open(report_dir, encoding="utf-8") as f:
                 report = json.load(f)
                 if report.get("resolved", None) is not None:
                     suc = "Success!" if report["resolved"] else "Failed..."
@@ -164,7 +164,7 @@ def run_instance(
     else:
         print("Failed...", instance["instance_id"], flush=True)
 
-    with open(report_dir, "w") as f:
+    with open(report_dir, "w", encoding="utf-8") as f:
         json.dump(report, f, indent = True)
     return report
 
@@ -213,7 +213,7 @@ def run_instances(instances: list[dict[str, str]],
     results["failure"] = len(results["failure_ids"])
     results["error"] = len(results["error_ids"])
     os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "results.json"), "w") as f:
+    with open(os.path.join(output_dir, "results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent = True)
     return results
 
@@ -228,13 +228,13 @@ def main(
             instance_ids: list[str] | None = None,
         ):
     if patch_dir.strip() != "gold":
-        with open(patch_dir) as f:
+        with open(patch_dir, encoding="utf-8") as f:
             preds = json.load(f)
         print(f"Loaded {len(preds)} predictions.")
     else:
         print("Running Ground Truth Patches...")
     if os.path.exists(dataset) and dataset.endswith(".jsonl"):
-        with open(dataset) as f:
+        with open(dataset, encoding="utf-8") as f:
             instances = [json.loads(i) for i in f]
     elif split is not None:
         instances = load_dataset(dataset, split=split)
@@ -266,7 +266,7 @@ def main(
     print("Error:", results["error"])
     print("Evaluation ended successfully.")
     if patch_dir.strip() == "gold":
-        with open(os.path.join(output_dir, "gold_patch_evaluated_instances.jsonl"), "w") as f:
+        with open(os.path.join(output_dir, "gold_patch_evaluated_instances.jsonl"), "w", encoding="utf-8") as f:
             for instance in instances:
                 if instance["instance_id"] in results["success_ids"]:
                     f.write(json.dumps(instance)+"\n")
