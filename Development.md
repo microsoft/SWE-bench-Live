@@ -181,6 +181,8 @@ In this step we apply gold patches to instances, run test cases, and get `FAIL_T
 # cd in repo root
 cd ../
 
+# For Windows system if there are decoding issues: $env:PYTHONUTF8="1" ; $env:PYTHONIOENCODING="utf-8"
+
 # Get Fail to Pass
 # apply test_patch -> build -> apply gold_patch -> build
 # test is run 3 times automatically in validation.py to filter flaky instances
