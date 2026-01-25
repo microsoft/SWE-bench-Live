@@ -98,6 +98,9 @@ Prediction patch file format:
 Evaluation command:
 
 ```bash
+
+# For windows if there are decoding issues: $env:PYTHONUTF8="1" ; $env:PYTHONIOENCODING="utf-8"
+
 python -m evaluation.evaluation \
     --dataset SWE-bench-Live/SWE-bench-Live \
     # or SWE-bench-Live/MultiLang, SWE-bench-Live/Windows
