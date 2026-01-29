@@ -18,7 +18,7 @@
   <a href="https://swe-bench-live.github.io">
         <img alt="Leaderboard" src="https://img.shields.io/badge/leaderboard-%F0%9F%8F%86-1?style=for-the-badge">
   </a>
-  <a href="./assets/dataset.md">
+  <a href="https://huggingface.co/collections/SWE-bench-Live/swe-bench-live">
         <img alt="dataset" src="https://img.shields.io/badge/Dataset-HF-FFD21E.svg?style=for-the-badge&logo=huggingface&logoColor=FFD21E">
   </a>
 </p>
@@ -98,6 +98,9 @@ Prediction patch file format:
 Evaluation command:
 
 ```bash
+
+# For windows if there are decoding issues: $env:PYTHONUTF8="1" ; $env:PYTHONIOENCODING="utf-8"
+
 python -m evaluation.evaluation \
     --dataset SWE-bench-Live/SWE-bench-Live \
     # or SWE-bench-Live/MultiLang, SWE-bench-Live/Windows
