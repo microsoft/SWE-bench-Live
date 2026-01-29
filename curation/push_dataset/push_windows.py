@@ -9,7 +9,7 @@ with open("logs/win/validated_instances.jsonl") as f:
 
 print("data loaded")
 
-all_fields = ["repo", "pull_number", "instance_id", "issue_numbers", "base_commit", 
+all_fields = ["repo", "pull_number", "instance_id", "language", "issue_numbers", "base_commit", 
               "patch", "test_patch", "problem_statement", "hints_text", "all_hints_text",
               "commit_urls", "created_at", "commit_url", "rebuild_cmds","test_cmds", "print_cmds",
               "log_parser", "FAIL_TO_PASS", "PASS_TO_PASS", "docker_image"]
@@ -71,11 +71,12 @@ for key in ds.keys():
     # 设置新的 features
     ds[key] = ds[key].cast(new_features)
  
-# Load existing dataset with c, cpp splits
-#old_dataset = load_dataset("SWE-bench-Live/Windows")
+old_dataset = load_dataset("SWE-bench-Live/Windows")
 
 # Merge: keep existing splits and add/update new ones
-#ds["test"] = old_dataset["test"] + ds["test"]
+new_ids = [i["instance_id"] for i in ds["test"]]
+retained = [i for i in old_dataset["test"] if i["instance_id"] not in new_ids]
+ds["test"] = retained + ds["test"]
 
 print(len(ds["test"]))
 

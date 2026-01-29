@@ -115,8 +115,7 @@ Create a run config for RepoLaunch and save it in `launch/data/your_experiment/c
     },
     "llm_provider_name": "OpenAI",
     "model_config": {        
-        "model_name": "gpt-4.1-20250414",
-        "temperature": 0.0
+        "model_name": "gpt-4.1-20250414"
     },
     "workspace_root": "data/examples/",
     "dataset": "data/examples/dataset.jsonl",
@@ -128,8 +127,8 @@ Create a run config for RepoLaunch and save it in `launch/data/your_experiment/c
     "max_trials": 2,
     "max_steps_setup": 60,
     "max_steps_verify": 20,
-    "max_steps_organize": 30,
-    "timeout": 60,
+    "max_steps_organize": 40,
+    "cmd_timeout": 60,
     "image_prefix": "repolaunch/dev"
 }
 ```
