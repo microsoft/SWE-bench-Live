@@ -118,7 +118,18 @@ def run_instance(instance: dict[str, str],
                 print(e, flush=True)
                 pass
     os.makedirs(instance_output_dir, exist_ok=True)
-    return {"FAIL_TO_PASS": []}
+    return validate_instance(
+                instance["instance_id"],
+                instance["docker_image"],
+                " ; ".join(instance["rebuild_cmds"]),
+                " ; ".join(instance["test_cmds"]),
+                " ; ".join(instance["print_cmds"]),
+                instance["test_patch"],
+                instance["patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir
+            )
 
 def run_instances(instances: list[dict[str, str]], 
                     platform: Literal["windows", "linux"], 
