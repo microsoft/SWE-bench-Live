@@ -10,7 +10,7 @@ from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
-TIMEOUT = 40*60
+TIMEOUT = 90*60
 
 
 def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
@@ -86,18 +86,18 @@ def evaluate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform)
+    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
     if rebuild_cmd.strip():
-        container.send_command(rebuild_cmd, timeout=TIMEOUT)
+        container.send_command(rebuild_cmd)
     if not print_cmd.strip():
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
         container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
         test_cmd = "bash run_test.sh > testlog.out 2>&1"
         print_cmd = "cat testlog.out"
-    container.send_command(test_cmd, timeout=TIMEOUT)
+    container.send_command(test_cmd)
     post_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
