@@ -71,12 +71,13 @@ for key in ds.keys():
     # 设置新的 features
     ds[key] = ds[key].cast(new_features)
  
+# Load existing dataset with c, cpp splits
 old_dataset = load_dataset("SWE-bench-Live/Windows")
 
-# Merge: keep existing splits and add/update new ones
-new_ids = [i["instance_id"] for i in ds["test"]]
-retained = [i for i in old_dataset["test"] if i["instance_id"] not in new_ids]
-ds["test"] = retained + ds["test"]
+# Overwrite old instances that share instance_id with new ones
+new_instance_ids = {row["instance_id"] for row in ds["test"]}
+old_filtered = [row for row in old_dataset["test"] if row["instance_id"] not in new_instance_ids]
+ds["test"] = Dataset.from_list(old_filtered + list(ds["test"]))
 
 print(len(ds["test"]))
 
