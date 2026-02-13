@@ -12,6 +12,7 @@ git clone --recursive https://github.com/microsoft/SWE-bench-Live
 pip install -e .
 pip install -e launch/.
 ```
+To set up RepoLaunch on Windows there are some special tips at [Development-Windows.md](https://github.com/microsoft/RepoLaunch/blob/main/docs/Development-Windows.md)
 
 ## Repositories Crawling
 
