@@ -116,6 +116,9 @@ python -m evaluation.evaluation \
     # 0 for no and 1 for yes
 ```
 
+> [!NOTE]
+> Users have reported task instances may become invalid over time. For benchmarking and training we suggest running evaluation with gold patch three times to filter invalid instances. We allow success rate report with the dorminator the actual number of instances passed with gold patch on your machine at your experiment time.
+
 Instance-level Docker images are hosted on DockerHub with name:
 
 ```python
