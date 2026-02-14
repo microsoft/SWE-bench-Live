@@ -252,12 +252,14 @@ def main(
     for idx in range(len(instances)):
         if instance_ids is not None and instances[idx]["instance_id"] not in instance_ids:
             continue
-        if patch_dir.strip() != "gold" and instances[idx]["instance_id"] in preds.keys():
-            instances[idx]["pred_patch"] = preds[instances[idx]["instance_id"]]["model_patch"]
-            todos.append(instances[idx])
-        if patch_dir.strip() == "gold":
-            instances[idx]["pred_patch"] = instances[idx]["patch"]
-            todos.append(instances[idx])
+        # Create a proper dict copy since HuggingFace Dataset rows don't support in-place modification
+        instance = dict(instances[idx])
+        if patch_dir.strip() != "gold" and instance["instance_id"] in preds.keys():
+            instance["pred_patch"] = preds[instance["instance_id"]]["model_patch"]
+            todos.append(instance)
+        elif patch_dir.strip() == "gold":
+            instance["pred_patch"] = instance["patch"]
+            todos.append(instance)
     results = run_instances(todos, platform, workers, output_dir, overwrite != 0)
     print("Submitted:", results["submitted"])
     print("Success:", results["success"])
