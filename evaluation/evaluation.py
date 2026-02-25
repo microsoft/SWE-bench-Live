@@ -156,9 +156,10 @@ def run_instance(
             "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
         },
     }
+    f2p = (len(report["FAIL_TO_PASS"]["success"]) > 0) if platform == "linux" else (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
     if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
-        and (len(report["FAIL_TO_PASS"]["success"]) > 0) :
+        and f2p:
         report["resolved"] = True
         print("Success!", instance["instance_id"], flush=True)
     else:
