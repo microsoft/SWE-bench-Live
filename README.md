@@ -28,7 +28,8 @@
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 ## News
-- **10/01/2026**: We tested the performance of GPT5.2 / Claude4.5 / Gemini3 / DeepseekV3.1 with SWE-agent / OpenHands / ClaudeCode on our new SWE-bench-Live/Multi-Language benchmark. Please refer to our leaderboard for result. [SWE-bench-Live Multi-Language Linux-Dist](https://huggingface.co/datasets/SWE-bench-Live/MultiLang) benchmark has been officially released, together with RepoLaunch that supports (C C++ C# Python Java Go JS/TS Rust) languages & (Windows, Linux) images. Merged into main. For old source code SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), refer to [python-only branch](https://github.com/microsoft/SWE-bench-Live/tree/python-only).
+- **08/03/2026**: SWE-bench-Live/Windows has been released along with the leaderboard, evaluating LLM's ability to resolve Windows-specific implementation and take actions in powershell. Newest paper updating all progress since the last NIPS paper is available at [RepoLaunch: Automating Build&Test Pipeline of Code Repositories on ANY Language and ANY Platform](https://arxiv.org/abs/2603.05026).
+- **10/01/2026**: SWE-bench-Live/Multi-Language with the leaderboard has been released. Merged into main. For old source code SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), refer to [python-only branch](https://github.com/microsoft/SWE-bench-Live/tree/python-only).
 - **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. For more info please refer to [PR#35](https://github.com/microsoft/SWE-bench-Live/pull/35).
 - **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for huggingface dataset SWE-bench-Live/SWE-bench-Live (Python tasks): **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 
@@ -95,6 +96,35 @@ Prediction patch file format:
 }
 ```
 
+Run gold patch:
+
+
+```bash
+
+# For windows if there are decoding issues: $env:PYTHONUTF8="1" ; $env:PYTHONIOENCODING="utf-8"
+
+python -m evaluation.evaluation \
+    --dataset SWE-bench-Live/SWE-bench-Live \
+    # or SWE-bench-Live/MultiLang, SWE-bench-Live/Windows
+    # or path to local dataset file like jsonl
+    --split < refer to Huggingface SWE-bench-Live > \
+    # if local jsonl file then ignore this field
+    --platform linux \
+    # or windows 
+    --patch_dir gold \
+    --output_dir logs/gold \
+    --workers 10 \
+    --overwrite 0 \
+    # 0 for no and 1 for yes
+    --start-month 2025-06 \
+    --end-month 2025-07
+    # default to oldest and newest if not specified
+```
+
+> [!NOTE]
+> Users have reported task instances may become invalid over time. For benchmarking and training we suggest running evaluation with gold patch three times to filter invalid instances. We allow success rate report with the dorminator the actual number of instances passed with gold patch on your machine at your experiment time.
+
+
 Evaluation command:
 
 ```bash
@@ -109,15 +139,12 @@ python -m evaluation.evaluation \
     # if local jsonl file then ignore this field
     --platform linux \
     # or windows 
-    --patch_dir <prediction patch> \
+    --patch_dir <prediction-patch-file-path> \
     --output_dir logs/test \
     --workers 10 \
-    --overwrite 0 \
+    --overwrite 0
     # 0 for no and 1 for yes
 ```
-
-> [!NOTE]
-> Users have reported task instances may become invalid over time. For benchmarking and training we suggest running evaluation with gold patch three times to filter invalid instances. We allow success rate report with the dorminator the actual number of instances passed with gold patch on your machine at your experiment time.
 
 Instance-level Docker images are hosted on DockerHub with name:
 
@@ -163,7 +190,7 @@ Please feel free to raise issues and contribute pull requests to help us improve
 
 ## 📚 Citation
 
-SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com). We extend our gratitude to the original SWE-bench team for their pioneering work in software engineering evaluation benchmarks.
+If you refer to the SWE task creation pipeline of SWE-bench-Live, please cite
 
 ```bibtex
 
@@ -174,14 +201,17 @@ SWE-bench-Live is built upon the foundation of [SWE-bench](https://swebench.com)
   year={2025}
 }
 
-@inproceedings{jimenez2024swebench,
-    title={SWE-bench: Can Language Models Resolve Real-world Github Issues?},
-    author={Carlos E Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R Narasimhan},
-    booktitle={The Twelfth International Conference on Learning Representations},
-    year={2024},
-    url={https://openreview.net/forum?id=VTF8yNQM66}
-}
+```
 
+If you refer to the automated build and test tool RepoLaunch, please cite
+
+```bibtex
+@article{li2026repolaunch,
+  title={RepoLaunch: Automating Build\&Test Pipeline of Code Repositories on ANY Language and ANY Platform},
+  author={Li, Kenan and Li, Rongzhi and Zhang, Linghao and Jin, Qirui and Zhu, Liao and Huang, Xiaosong and Zhang, Geng and Zhang, Yikai and He, Shilin and Xie, Chengxing and others},
+  journal={arXiv preprint arXiv:2603.05026},
+  year={2026}
+}
 ```
 
 

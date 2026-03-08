@@ -5,12 +5,32 @@ from launch.scripts.parser import run_parser
 import json
 import argparse
 import traceback
+import re
 from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
 TIMEOUT = 90*60
+
+
+def normalize_month(month: str) -> str:
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise ValueError(f"Invalid month format: {month}. Expected YYYY-MM.")
+    return month
+
+
+def get_instance_month(instance: dict) -> str | None:
+    created_at = instance.get("created_at")
+    if created_at is None:
+        return None
+    created_at_str = str(created_at).strip()
+    if not created_at_str:
+        return None
+    match = re.match(r"^(\d{4}-\d{2})", created_at_str)
+    if match is None:
+        return None
+    return match.group(1)
 
 
 def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
@@ -227,6 +247,8 @@ def main(
             overwrite: int,
             split: str|None = None,
             instance_ids: list[str] | None = None,
+            start_month: str | None = None,
+            end_month: str | None = None,
         ):
     if patch_dir.strip() != "gold":
         with open(patch_dir, encoding="utf-8") as f:
@@ -247,6 +269,21 @@ def main(
                 instances.extend(ds[key])
         else:
             instances = ds
+    all_months = []
+    for instance in instances:
+        month = get_instance_month(instance)
+        if month is not None:
+            all_months.append(month)
+    if all_months:
+        oldest_month = min(all_months)
+        newest_month = max(all_months)
+        start_month = normalize_month(start_month) if start_month is not None else oldest_month
+        end_month = normalize_month(end_month) if end_month is not None else newest_month
+        if start_month > end_month:
+            raise ValueError(f"Invalid month range: start-month ({start_month}) is after end-month ({end_month}).")
+        print(f"Month filter: {start_month} to {end_month} (dataset range: {oldest_month} to {newest_month})")
+    elif start_month is not None or end_month is not None:
+        raise ValueError("Month filtering requires 'created_at' field, but no parseable 'created_at' values were found.")
     if instance_ids is not None:
         print(f"Evaluating {instance_ids} ......")
     todos = []
@@ -255,6 +292,9 @@ def main(
             continue
         # Create a proper dict copy since HuggingFace Dataset rows don't support in-place modification
         instance = dict(instances[idx])
+        month = get_instance_month(instance)
+        if all_months and month is not None and (month < start_month or month > end_month):
+            continue
         if patch_dir.strip() != "gold" and instance["instance_id"] in preds.keys():
             instance["pred_patch"] = preds[instance["instance_id"]]["model_patch"]
             todos.append(instance)
@@ -284,6 +324,8 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite", type=int, required=True, help="Overwrite existing results (0 or 1)")
     parser.add_argument("--split", type=str, default=None, help="Dataset split to use")
     parser.add_argument("--instance_ids", type=str, nargs="+", default=None, help="Specific instance IDs to evaluate")
+    parser.add_argument("--start-month", type=str, default=None, help="Start month (inclusive) in YYYY-MM format")
+    parser.add_argument("--end-month", type=str, default=None, help="End month (inclusive) in YYYY-MM format")
     
     args = parser.parse_args()
     
@@ -295,6 +337,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         overwrite=args.overwrite,
         split=args.split,
-        instance_ids=args.instance_ids
+        instance_ids=args.instance_ids,
+        start_month=args.start_month,
+        end_month=args.end_month
     )
-
