@@ -190,7 +190,7 @@ Please feel free to raise issues and contribute pull requests to help us improve
 
 ## 📚 Citation
 
-If you refer to the SWE task creation pipeline of SWE-bench-Live, please cite
+If you refer to the SWE task creation pipeline of SWE-bench-Live, or SWE-bench-Live/SWE-bench-Live (Python only tasks), please cite
 
 ```bibtex
 
@@ -203,7 +203,7 @@ If you refer to the SWE task creation pipeline of SWE-bench-Live, please cite
 
 ```
 
-If you refer to the automated build and test tool RepoLaunch, please cite
+If you refer to the automated build and test tool RepoLaunch, SWE-bench-Live/Multi-Language or SWE-bench-Live/Windows, please cite
 
 ```bibtex
 @article{li2026repolaunch,
