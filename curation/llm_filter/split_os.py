@@ -30,8 +30,8 @@ Now output your answer. You answer should be only one word, "windows" or "genera
 Answer:"""
 
 class Judge:
-    def __init__(self, provider: str, model_name: str):
-        self.llm = LLMProvider(provider, model_name = model_name, temperature = None)
+    def __init__(self, model: str):
+        self.llm = LLMProvider(model = model)
 
     def call_llm(self, problem_statement: str) -> str:
         """Call LLM to classify problem statement when Windows keyword is detected."""
@@ -45,7 +45,7 @@ class Judge:
         ]).content
 
         label = response.strip().lower()
-        print(label)
+        print(label, flush=True, end=" ")
         if "windows" in label:
             return "windows"
         return "general"
@@ -81,10 +81,9 @@ if __name__ == "__main__":
     parser.add_argument("--input_file", required=True, help="Path to input JSONL file with tasks")
     parser.add_argument("--windows_file", default="windows.jsonl", help="Output file for Windows-specific tasks")
     parser.add_argument("--general_file", default="general.jsonl", help="Output file for general tasks")
-    parser.add_argument("--llm_provider", choices = ["AOAI", "OpenAI", "Anthropic"], default="AOAI", help="LLM provider")
-    parser.add_argument("--model_name", default="gpt-5-20250807", help="model name")
+    parser.add_argument("--model", default="gpt-5.2-20251211", help="model name")
 
     args = parser.parse_args()
-    judge = Judge(args.llm_provider, args.model_name)
+    judge = Judge(args.model)
     judge.process_file(args.input_file, args.windows_file, args.general_file)
 

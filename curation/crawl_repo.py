@@ -21,7 +21,7 @@ def load_tokens(tokens_file):
 def make_query(language, stars_min, stars_max):
     parts = []
     if language:
-        parts.append(f"language:{language}")
+        parts.append(f'language:"{language}"')
     if stars_min is not None and stars_max is not None:
         parts.append(f"stars:{stars_min}..{stars_max}")
     elif stars_min is not None:

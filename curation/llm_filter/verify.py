@@ -7,8 +7,8 @@ import json
 from langchain_core.messages import HumanMessage, SystemMessage
 
 class Judge:
-    def __init__(self, provider: str, model_name: str):
-        self.llm = LLMProvider(provider, model_name = model_name, temperature = None)
+    def __init__(self, model: str):
+        self.llm = LLMProvider(model = model, temperature = None)
 
     def verify(self, description, gold_patch, test_patch) -> bool:
         if len(description) > 100000:
@@ -44,16 +44,15 @@ class Judge:
                 HumanMessage(prompt),
             ]).content
             if "4" in response:
-                print(4)
+                print(4, flush=True, end=" ")
                 return True
-        print(response)
+        print(response, flush=True, end=" ")
         return False
 
 def main(input_dir: str, 
             output_dir: str, 
-            llm_provider: Literal["AOAI", "OpenAI", "Anthropic"],
-            model_name: str = "gpt-5-20250807"):
-    judge = Judge(llm_provider, model_name)
+            model: str = "gpt-5.2-20251211"):
+    judge = Judge(model)
     with open(input_dir) as f:
         original=[json.loads(i) for i in f]
     filtered=[i for i in original \

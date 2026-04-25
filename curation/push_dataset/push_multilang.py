@@ -1,4 +1,4 @@
-from datasets import load_dataset, DatasetDict, Features, Value, Sequence, Dataset
+from datasets import load_dataset, DatasetDict, Features, Value, Sequence, Dataset, concatenate_datasets
 import json
 
 ds = {}
@@ -76,8 +76,16 @@ for key in ds.keys():
 # Load existing dataset with c, cpp splits
 old_dataset = load_dataset("SWE-bench-Live/MultiLang")
 
-# Merge: keep existing splits and add/update new ones
-merged_dict = {**old_dataset, **ds}  # ds will override if keys overlap
+# Merge: for each split, add new items; new items override old items with the same instance_id
+merged_dict = {lang: old_dataset[lang] for lang in old_dataset.keys()}
+for lang, new_split in ds.items():
+    if lang in merged_dict:
+        old_split = merged_dict[lang]
+        new_ids = set(new_split["instance_id"])
+        kept_old = old_split.filter(lambda x: x["instance_id"] not in new_ids)
+        merged_dict[lang] = concatenate_datasets([kept_old, new_split])
+    else:
+        merged_dict[lang] = new_split
 
 for lang in merged_dict.keys():
     print(lang, len(merged_dict[lang]))
