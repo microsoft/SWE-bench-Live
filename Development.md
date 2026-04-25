@@ -16,7 +16,7 @@ To set up RepoLaunch on Windows there are some special tips at [Development-Wind
 
 ## Repositories Crawling
 
-This step crawls the initial source repo list, from which we find issues. You should prepare GitHub tokens in advance to unlock the API rate limit.
+This step crawls the initial source repo list, from which we find issues. You should prepare GitHub tokens in `tokens.txt` in advance to unlock the API rate limit -- collect at least three tokens from different GitHub accounts.
 
 1. Crawl raw repositories within a given star range, supporting multiple tokens for higher rate limits
 
@@ -101,6 +101,13 @@ python -m llm_filter.split_os \
     --general_file  output/general_tasks.jsonl \
     --llm_provider  AOAI \
     --model_name   gpt-5-20250807
+```
+
+We have created a script `curation/run.sh` that allows you to run all the curation steps in one go. We recommend that you test each step manually using a small volume of data to ensure there are no bugs before running `run.sh` at scale.
+
+```bash
+cd curation
+nohup bash run.sh > log.out 2>&1 &
 ```
 
 ## Execution Env Setup with `RepoLaunch`
