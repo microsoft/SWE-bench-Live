@@ -28,9 +28,9 @@
 SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
 
 ## News
+- **16/05/2026**: Updated more tasks for SWE-bench-Live/MultiLang (743 tasks on 6 languages from 381 repos in Linux container environment) and SWE-bench-Live/Windows (61 tasks on 6 languages from 44 repos in Windows container environment). 
 - **08/03/2026**: SWE-bench-Live/Windows has been released along with the leaderboard, evaluating LLM's ability to resolve Windows-specific implementation and take actions in powershell. Newest paper updating all progress since the last NIPS paper is available at [RepoLaunch: Automating Build&Test Pipeline of Code Repositories on ANY Language and ANY Platform](https://arxiv.org/abs/2603.05026).
-- **10/01/2026**: SWE-bench-Live/Multi-Language with the leaderboard has been released. Merged into main. For old source code SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), refer to [python-only branch](https://github.com/microsoft/SWE-bench-Live/tree/python-only).
-- **04/12/2025**: We have updated eval result of GPT-5 and Claude-4.5 on our website. Though Claude might have seen the ground truth because its knowledge cutoff month is July 2025. We have also separated the RepoLaunch project to [RepoLaunch](https://github.com/microsoft/RepoLaunch/). Please contribute repolaunch agent relevant codes to this new repository. For more info please refer to [PR#35](https://github.com/microsoft/SWE-bench-Live/pull/35).
+- **10/01/2026**: SWE-bench-Live/Multi-Language with the leaderboard has been released. Merged into main. Supported languages: C/C++, C#, Java, TS/JS, Go, Rust. For old source code SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), refer to [python-only branch](https://github.com/microsoft/SWE-bench-Live/tree/python-only).
 - **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for huggingface dataset SWE-bench-Live/SWE-bench-Live (Python tasks): **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 
 
@@ -42,10 +42,7 @@ pip install -e .
 ```
 
 > [!NOTE]
-> Though this eval script has ensured backward compatibility with SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), which uses swebench library for evaluation, if you want to evaluate on SWE-bench-Live/SWE-bench-Live (Python), for fair comparison we still recommend you to go to our old [Python-only branch](https://github.com/microsoft/SWE-bench-Live/blob/python-only/README.md) and follow the old evaluation method.
-
-The below eval script is more suitable for our new datasets SWE-bench-Live/MultiLang and SWE-bench-Live/Windows.
-
+> Though this eval script has ensured backward compatibility with SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), which uses swebench library for evaluation, if you want to evaluate on SWE-bench-Live/SWE-bench-Live (Python), for fair comparison we still recommend you to go to our old [Python-only branch](https://github.com/microsoft/SWE-bench-Live/blob/python-only/README.md) and follow the old evaluation method. The below eval script is more suitable for our new datasets SWE-bench-Live/MultiLang and SWE-bench-Live/Windows.
 
 Test your installation by running:
 ```bash
@@ -61,7 +58,9 @@ python -m evaluation.evaluation \
 
 ## 🚥 Evaluation
 
-Evaluate your model on SWE-bench-Live.
+Evaluate your model/agent on SWE-bench-Live.
+
+### Agent Inference
 
 Collect patch diff of your agent:
 
@@ -96,8 +95,13 @@ Prediction patch file format:
 }
 ```
 
-Run gold patch:
+### Run gold patch
 
+> [!NOTE]
+> 
+> Estimated resource for one instance: 4 CPUs with 16 GB RAM. For some large repos like C++ repos even 50GB RAM is required. Otherwise these large repos would go OOM and fail...
+> 
+> Though we have run tests 3 times during task creation to filter out unstable instances, tests may become invalid overtime, and users have reported that different tests may fail on different machines -- docker does not guarantee full isolation. For benchmarking and training we suggest running evaluation with gold patch three times to filter invalid instances. We allow success rate report with the dorminator the actual number of instances passed with gold patch on your machine at your experiment time.
 
 ```bash
 
@@ -121,11 +125,7 @@ python -m evaluation.evaluation \
     # default to oldest and newest if not specified
 ```
 
-> [!NOTE]
-> Users have reported task instances may become invalid over time. For benchmarking and training we suggest running evaluation with gold patch three times to filter invalid instances. We allow success rate report with the dorminator the actual number of instances passed with gold patch on your machine at your experiment time.
-
-
-Evaluation command:
+### Evaluation command
 
 ```bash
 
@@ -145,6 +145,8 @@ python -m evaluation.evaluation \
     --overwrite 0
     # 0 for no and 1 for yes
 ```
+
+### Docker images
 
 Instance-level Docker images are hosted on DockerHub with name:
 
