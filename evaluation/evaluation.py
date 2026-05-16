@@ -11,7 +11,7 @@ from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
-TIMEOUT = 90*60
+TIMEOUT = 150*60
 
 
 def normalize_month(month: str) -> str:
