@@ -132,14 +132,15 @@ def evaluate_instance(
     return post_patch_status
 
 def run_instance(
-                    instance: dict, 
-                    platform: Literal["windows","linux"], 
-                    output_dir: str, 
-                    overwrite: bool
+                    instance: dict,
+                    platform: Literal["windows","linux"],
+                    output_dir: str,
+                    overwrite: bool,
+                    collect_only: bool = False,
                 ):
     instance_output_dir = os.path.join(output_dir, instance["instance_id"])
     report_dir = os.path.join(instance_output_dir, "report.json")
-    if (not overwrite) and os.path.exists(report_dir):
+    if (collect_only or not overwrite) and os.path.exists(report_dir):
         try:
             with open(report_dir, encoding="utf-8") as f:
                 report = json.load(f)
@@ -149,6 +150,9 @@ def run_instance(
                     return report
         except:
             pass
+    if collect_only:
+        print("Incomplete...", instance["instance_id"], flush=True)
+        return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
@@ -176,7 +180,8 @@ def run_instance(
             "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
         },
     }
-    f2p = (len(report["FAIL_TO_PASS"]["success"]) > 0) if platform == "linux" else (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
+    f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
+        or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
     if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
@@ -189,11 +194,12 @@ def run_instance(
         json.dump(report, f, indent = True)
     return report
 
-def run_instances(instances: list[dict[str, str]], 
-                    platform: Literal["windows", "linux"], 
+def run_instances(instances: list[dict[str, str]],
+                    platform: Literal["windows", "linux"],
                     workers: int,
                     output_dir: str,
-                    overwrite: bool):
+                    overwrite: bool,
+                    collect_only: bool = False):
     todos = []
     empty_instance_ids = []
     for i in instances:
@@ -210,11 +216,12 @@ def run_instances(instances: list[dict[str, str]],
         "success_ids": [],
         "failure_ids": [],
         "error_ids": [],
+        "incomplete_ids": [],
     }
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
         future_to_instance = {
-            executor.submit(run_instance, instance, platform, output_dir, overwrite): instance
+            executor.submit(run_instance, instance, platform, output_dir, overwrite, collect_only): instance
             for instance in todos
         }
 
@@ -223,7 +230,9 @@ def run_instances(instances: list[dict[str, str]],
             instance = future_to_instance[future]
             try:
                 result = future.result()
-                if result["resolved"]:
+                if result["resolved"] is None:
+                    results["incomplete_ids"].append(instance["instance_id"])
+                elif result["resolved"]:
                     results["success_ids"].append(instance["instance_id"])
                 else:
                     results["failure_ids"].append(instance["instance_id"])
@@ -233,6 +242,7 @@ def run_instances(instances: list[dict[str, str]],
     results["success"] = len(results["success_ids"])
     results["failure"] = len(results["failure_ids"])
     results["error"] = len(results["error_ids"])
+    results["incomplete"] = len(results["incomplete_ids"])
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent = True)
@@ -249,6 +259,7 @@ def main(
             instance_ids: list[str] | None = None,
             start_month: str | None = None,
             end_month: str | None = None,
+            collect_only: bool = False,
         ):
     if patch_dir.strip() != "gold":
         with open(patch_dir, encoding="utf-8") as f:
@@ -301,14 +312,17 @@ def main(
         elif patch_dir.strip() == "gold":
             instance["pred_patch"] = instance["patch"]
             todos.append(instance)
-    results = run_instances(todos, platform, workers, output_dir, overwrite != 0)
+    results = run_instances(todos, platform, workers, output_dir, overwrite != 0, collect_only)
     print("Submitted:", results["submitted"])
     print("Success:", results["success"])
     print("Failure:", results["failure"])
     print("Empty:", results["empty_patch"])
     print("Error:", results["error"])
+    print("Incomplete:", results["incomplete"])
+    if results["incomplete_ids"]:
+        print("Incomplete IDs:", ", ".join(results["incomplete_ids"]))
     print("Evaluation ended successfully.")
-    if patch_dir.strip() == "gold":
+    if patch_dir.strip().lower() == "gold":
         with open(os.path.join(output_dir, "gold_patch_evaluated_instances.jsonl"), "w", encoding="utf-8") as f:
             for instance in instances:
                 if instance["instance_id"] in results["success_ids"]:
@@ -326,7 +340,8 @@ if __name__ == "__main__":
     parser.add_argument("--instance_ids", type=str, nargs="+", default=None, help="Specific instance IDs to evaluate")
     parser.add_argument("--start-month", type=str, default=None, help="Start month (inclusive) in YYYY-MM format")
     parser.add_argument("--end-month", type=str, default=None, help="End month (inclusive) in YYYY-MM format")
-    
+    parser.add_argument("--collect-only", action="store_true", help="Only collect existing results without running unfinished instances")
+
     args = parser.parse_args()
     
     main(
@@ -339,5 +354,6 @@ if __name__ == "__main__":
         split=args.split,
         instance_ids=args.instance_ids,
         start_month=args.start_month,
-        end_month=args.end_month
+        end_month=args.end_month,
+        collect_only=args.collect_only,
     )

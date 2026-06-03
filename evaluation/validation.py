@@ -103,12 +103,13 @@ def validate_instance(
         json.dump(res, f, indent = True)
     return res
 
-def run_instance(instance: dict[str, str], 
+def run_instance(instance: dict[str, str],
                     platform: Literal["windows", "linux"],
                     output_dir: str,
-                    overwrite: bool) -> ValidationResult:
+                    overwrite: bool,
+                    collect_only: bool = False) -> ValidationResult:
     instance_output_dir = os.path.join(output_dir, instance["instance_id"])
-    if (not overwrite) and os.path.exists(os.path.join(instance_output_dir, "status.json")):
+    if (collect_only or not overwrite) and os.path.exists(os.path.join(instance_output_dir, "status.json")):
         with open(os.path.join(instance_output_dir, "status.json"), encoding="utf-8") as f:
             try:
                 report = json.load(f)
@@ -117,6 +118,9 @@ def run_instance(instance: dict[str, str],
             except Exception as e:
                 print(e, flush=True)
                 pass
+    if collect_only:
+        print("Incomplete...", instance["instance_id"], flush=True)
+        return {**instance, "PASS_TO_PASS": [], "FAIL_TO_PASS": []}
     os.makedirs(instance_output_dir, exist_ok=True)
     return validate_instance(
                 instance["instance_id"],
@@ -131,16 +135,17 @@ def run_instance(instance: dict[str, str],
                 instance_output_dir
             )
 
-def run_instances(instances: list[dict[str, str]], 
-                    platform: Literal["windows", "linux"], 
+def run_instances(instances: list[dict[str, str]],
+                    platform: Literal["windows", "linux"],
                     workers: int,
                     output_dir: str,
-                    overwrite: bool) -> list[dict[str, str]]:
+                    overwrite: bool,
+                    collect_only: bool = False) -> list[dict[str, str]]:
     results = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
         future_to_instance = {
-            executor.submit(run_instance, instance, platform, output_dir, overwrite): instance
+            executor.submit(run_instance, instance, platform, output_dir, overwrite, collect_only): instance
             for instance in instances
         }
 
@@ -162,13 +167,14 @@ def main(
             input_dir: str, 
             platform: Literal["windows", "linux"], 
             workers: int, 
-            output_dir: str, 
+            output_dir: str,
             overwrite: int,
+            collect_only: bool = False,
         ):
     with open(input_dir, encoding="utf-8") as f:
         instances = [json.loads(i) for i in f]
     print(f"Loaded {len(instances)} instances.")
-    results = run_instances(instances, platform, workers, output_dir, overwrite != 0)
+    results = run_instances(instances, platform, workers, output_dir, overwrite != 0, collect_only)
     filtered_res = [i for i in results if len(i["FAIL_TO_PASS"]) > 0]
     print(f"Saved {len(filtered_res)} valid instances.")
     with open(os.path.join(output_dir, "validated_instances.jsonl"), "w", encoding="utf-8") as f:
