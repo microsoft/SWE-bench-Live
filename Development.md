@@ -6,13 +6,15 @@ This tutorial walks you through how to automatically curate new issue-resolving 
 
 Dependencies: python, git, docker
 
+The docker dependency means running on containerized cluster pods is **NOT** feasible. Usually running one instances takes 4 GPUs with 16GB RAM, and the large repos like ClickHouse takes even 10 CPUs and 64GB RAM... The disk I/O rate is also critical for docker commit operations, so SSD (>= 1TB) disk is always preferred. In a word, **the performance of your machine directly determines the success rate of task creation**.
+
 ```shell
 docker ps # make sure docker is running and you have privilage
 git clone --recursive https://github.com/microsoft/SWE-bench-Live
 pip install -e .
 pip install -e launch/.
 ```
-To set up RepoLaunch on Windows there are some special tips at [Development-Windows.md](https://github.com/microsoft/RepoLaunch/blob/main/docs/Development-Windows.md)
+To set up RepoLaunch on Windows container there are some special tips at [Development-Windows.md](https://github.com/microsoft/RepoLaunch/blob/main/docs/Development-Windows.md)
 
 ## Repositories Crawling
 
@@ -141,7 +143,9 @@ Create a run config for RepoLaunch and save it in `launch/data/your_experiment/c
 }
 ```
 
-Prepare your llm API Key.
+Set `cmd_timeout` to 60min for Linux and 90min for Windows. Each worker usually takes 4 CPUs and 16GB RAM, so determine `workers` based on the specifications of your machine.
+
+Prepare your llm API key and TAVILY API key (for web search tool).
 
 ```shell
 export OPENAI_API_KEY=...
