@@ -25,7 +25,7 @@
 
 ---
 
-SWE-bench-Live is a live benchmark for issue resolving, designed to evaluate an AI system's ability to complete real-world software engineering tasks. Thanks to our automated dataset curation pipeline, we plan to update SWE-bench-Live on a monthly basis to provide the community with up-to-date task instances and support rigorous and contamination-free evaluation.
+SWE-bench-Live is the **first automatically-updating, multi-language and multi-os** SWE task set designed for agentic benchmarking and training. This repository provides the evaluation script to evaluate the prediction patches of your agent on our public huggingface datasets: SWE-bench-Live/SWE-bench-Live (Python), SWE-bench-Live/MultiLang and SWE-bench-Live/Windows. This repository also provides the task-creation source code for you to create your customized SWE tasks for large-scale agentic RFT/RL, each paired with an executable docker sandbox.
 
 ## News
 - **16/05/2026**: Updated more tasks for SWE-bench-Live/MultiLang (743 tasks on 6 languages from 381 repos in Linux container environment) and SWE-bench-Live/Windows (61 tasks on 6 languages from 44 repos in Windows container environment). 
