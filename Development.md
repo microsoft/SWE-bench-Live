@@ -123,9 +123,8 @@ Create a run config for RepoLaunch and save it in `launch/data/your_experiment/c
         "setup": true,
         "organize": true
     },
-    "llm_provider_name": "OpenAI",
-    "model_config": {        
-        "model_name": "gpt-4.1-20250414"
+    "model_config": {
+        "model": "openai/gpt-5.4"
     },
     "workspace_root": "data/examples/",
     "dataset": "data/examples/dataset.jsonl",
@@ -158,7 +157,7 @@ Fire your RepoLaunch run!
 cd ../launch
 
 # recommended in a tmux session, it takes long time
-python -m launch.run --config-path data/your_experiment/config.json
+python -m launch.run --config-path data/examples/config.json
 ```
 
 <blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
