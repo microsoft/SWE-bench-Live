@@ -25,7 +25,9 @@
 
 ---
 
-SWE-bench-Live is the **first automatically-updating, multi-language and multi-os** SWE task set designed for agentic benchmarking and training. This repository provides the evaluation script to evaluate the prediction patches of your agent on our public huggingface datasets: SWE-bench-Live/SWE-bench-Live (Python), SWE-bench-Live/MultiLang and SWE-bench-Live/Windows. This repository also provides the task-creation source code for you to create your customized SWE tasks for large-scale agentic RFT/RL, each paired with an executable docker sandbox.
+SWE-bench-Live is the **first automatically-updating, multi-language and multi-os** SWE task set designed for agentic benchmarking and training. This repository provides:
+1. The **evaluation script** to evaluate the prediction patches of your agent on our public huggingface datasets: _SWE-bench-Live/SWE-bench-Live (Python)_, _SWE-bench-Live/MultiLang_ and _SWE-bench-Live/Windows_. 
+2. The **task-creation source code** for you to create your customized SWE tasks for large-scale agentic RFT/RL, each paired with an executable docker sandbox.
 
 ## News
 - **16/05/2026**: Updated more tasks for SWE-bench-Live/MultiLang (743 tasks on 6 languages from 381 repos in Linux container environment) and SWE-bench-Live/Windows (61 tasks on 6 languages from 44 repos in Windows container environment). 
@@ -62,11 +64,11 @@ Guide on running your model/agent on SWE-bench-Live: [evaluation/README.md](./ev
 
 ## ⬆️ Submit your results
 
-Thank you for your interest in submitting results to SWE-bench-Live! We coordinate results submission via Pull Requests, see [SWE-bench-Live/submissions](https://github.com/swe-bench-live/submission) for instructions.
+Thank you for your interest in submitting the success rate of your agent/model to SWE-bench-Live! We coordinate results submission via Pull Requests, see [SWE-bench-Live/submissions](https://github.com/swe-bench-live/submission) for instructions.
 
 ## 🐳 Development
 
-If you would like to run our source code, please refer to [Development.md](./Development.md).
+If you would like to create your own SWE task instances with executable sandboxes, please follow [Development.md](./Development.md).
 
 ### Dataset Curation
 
@@ -104,7 +106,7 @@ If you refer to the SWE task creation pipeline of SWE-bench-Live, or SWE-bench-L
 
 ```
 
-If you refer to the automated build and test tool RepoLaunch, SWE-bench-Live/Multi-Language or SWE-bench-Live/Windows, please cite
+If you refer to the automated build and test tool _RepoLaunch_, SWE benchmarking/training/RFT/RL environment build, SWE-bench-Live/Multi-Language or SWE-bench-Live/Windows, please cite
 
 ```bibtex
 @article{li2026repolaunch,
