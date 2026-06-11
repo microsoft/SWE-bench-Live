@@ -31,7 +31,7 @@ SWE-bench-Live is the **first automatically-updating, multi-language and multi-o
 
 ## News
 - **16/05/2026**: Updated more tasks for SWE-bench-Live/MultiLang (743 tasks on 6 languages from 381 repos in Linux container environment) and SWE-bench-Live/Windows (61 tasks on 6 languages from 44 repos in Windows container environment). 
-- **08/03/2026**: SWE-bench-Live/Windows has been released along with the leaderboard, evaluating LLM's ability to resolve Windows-specific implementation and take actions in powershell. Newest paper updating all progress since the last NIPS paper is available at [RepoLaunch: Automating Build&Test Pipeline of Code Repositories on ANY Language and ANY Platform](https://arxiv.org/abs/2603.05026).
+- **08/03/2026**: SWE-bench-Live/Windows has been released along with the leaderboard, evaluating LLM's ability to resolve Windows-specific implementation and take actions in powershell. Newest paper on the multi-language and multi-os SWE task sets is available at [RepoLaunch: Automating Build and Management of Code Repositories across Languages and Platforms](https://arxiv.org/abs/2603.05026).
 - **10/01/2026**: SWE-bench-Live/Multi-Language with the leaderboard has been released. Merged into main. Supported languages: C/C++, C#, Java, TS/JS, Go, Rust. For old source code SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), refer to [python-only branch](https://github.com/microsoft/SWE-bench-Live/tree/python-only).
 - **09/17/2025**: Dataset updated (through 08/2025)! We’ve finalized the update process for huggingface dataset SWE-bench-Live/SWE-bench-Live (Python tasks): **Each month, we will add 50 newly verified, high-quality issues to the dataset test split**. The `lite` and `verified` splits will remain frozen, ensuring fair leaderboard comparisons and keeping evaluation costs manageable. To access all the latest issues, please refer to the `full` split!
 
@@ -110,7 +110,7 @@ If you refer to the automated build and test tool _RepoLaunch_, SWE benchmarking
 
 ```bibtex
 @article{li2026repolaunch,
-  title={RepoLaunch: Automating Build\&Test Pipeline of Code Repositories on ANY Language and ANY Platform},
+  title={RepoLaunch: Automating Build and Management of Code Repositories across Languages and Platforms},
   author={Li, Kenan and Li, Rongzhi and Zhang, Linghao and Jin, Qirui and Zhu, Liao and Huang, Xiaosong and Zhang, Geng and Zhang, Yikai and He, Shilin and Xie, Chengxing and others},
   journal={arXiv preprint arXiv:2603.05026},
   year={2026}
