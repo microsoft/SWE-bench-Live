@@ -58,19 +58,21 @@ def validate_instance(
     container.cleanup()
     del container
 
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-    container.apply_patch(test_patch, verbose=True)
-    container.apply_patch(solution_patch, verbose=True)
-    container.send_command(rebuild_cmd)
     post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = {}
     post_patch_status_under_inspect: dict[int, dict[str, Literal['pass', 'fail', 'skip']]] = {}
     post_patch_log_accumulate: str = ""
     # 3 validation for stable states
     for check in range(3):
+        container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+        container.apply_patch(test_patch, verbose=True)
+        container.apply_patch(solution_patch, verbose=True)
+        container.send_command(rebuild_cmd)
         container.send_command(test_cmd)
         post_patch_log: str = container.send_command(print_cmd).output
         post_patch_log_accumulate += f"eval No.{check} \n\n========  \n\n{post_patch_log} \n\n"
         post_patch_status_under_inspect[check] = run_parser(parser, post_patch_log)
+        container.cleanup()
+        del container
     all_tests = set(post_patch_status_under_inspect[0].keys()) | set(post_patch_status_under_inspect[1].keys()) | set(post_patch_status_under_inspect[2].keys())
     for test in all_tests:
         all_status = [
@@ -89,7 +91,6 @@ def validate_instance(
             post_patch_status[test] = 'pass'
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log_accumulate)
-    container.cleanup()
     
     res: ValidationResult = compare({
         "instance_id": instance_id,

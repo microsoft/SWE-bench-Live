@@ -105,16 +105,16 @@ python -m llm_filter.split_os \
     --model_name   gpt-5-20250807
 ```
 
-We have created a script `curation/run.sh` that allows you to run all the curation steps in one go. We recommend that you test each step manually using a small volume of data to ensure there are no bugs before running `run.sh` at scale.
+We have created a script `curation/run.sh` that allows you to run all the above curation steps in one go. We recommend that you test each step manually using a small volume of data to ensure there are no bugs before running `run.sh` at scale.
 
 ```bash
 cd curation
 nohup bash run.sh > log.out 2>&1 &
 ```
 
-## Execution Env Setup with `RepoLaunch`
+## Execution Environment Setup with `RepoLaunch`
 
-Next, we will use `RepoLaunch` to attempt to create an execution environment for each task instance to support test execution.
+Next, we will use `RepoLaunch` to create an execution environment for each task instance to support test execution.
 
 Create a run config for RepoLaunch and save it in `launch/data/your_experiment/config.json`. The example config.json in `launch/data/examples` is:
 ```json
@@ -144,43 +144,56 @@ Create a run config for RepoLaunch and save it in `launch/data/your_experiment/c
 
 Set `cmd_timeout` to 60min for Linux and 90min for Windows. Each worker usually takes 4 CPUs and 16GB RAM, so determine `workers` based on the specifications of your machine.
 
-Prepare your llm API key and TAVILY API key (for web search tool).
+Prepare your LLM API key and TAVILY API key (for web search tool).
 
 ```shell
-export OPENAI_API_KEY=...
-
-export TAVILY_API_KEY=...
+export OPENAI_API_KEY=... # for linux
+$env:OPENAI_API_KEY=... # for windows
+export TAVILY_API_KEY=... # for linux
+$env:TAVILY_API_KEY=... # for windows
 ```
 
 Fire your RepoLaunch run!
 ```shell
 cd ../launch
 
-# recommended in a tmux session, it takes long time
-python -m launch.run --config-path data/examples/config.json
+# recommended in a tmux session, as repo build&test takes a very long time
+launch data/examples/config.json
 ```
 
-<blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
+Result is saved to `data/examples/organize.jsonl`.
 
-Note: Some instances would require many file descriptors. If you see "too many files open error", try
-```shell
-ulimit -a
-ulimit -n 32768
-```
-</blockquote>
+> [!NOTE]
+> If your `dataset.jsonl` contains multiple instances with different commits from the same repo, we provide a more efficient command than `launch data/examples/config.json`:
+>
+> ```shell
+> export GITHUB_TOKEN=... # for linux
+> $env:GITHUB_TOKEN=...   # for windows
+> python -m launch.scripts.adjacent_commit_run --config-path data/examples/config.json
+> ```
+>
+> This command only selects one commit for each repo to launch. After RepoLaunch completes that commit, other commits of the same repo in the dataset is git-checked out from the built image, and the RepoLaunch extracted commands and parsers are re-used. Only when direct checkout failed will the failed instances be launched by RepoLaunch. With GPT-5.6-Sol-Medium, this method achieves >=98% success with 82% savings on LM API cost and 78% savings on Docker image storage space when creating execution environments for 856 GitHub issues from 93 repos.
+>
+> Result of this command is saved to `data/examples/result.jsonl` (not `organize.jsonl`).
 
-<blockquote style="border-left: 4px solid #3498db; background: #f4faff; padding: 0.75em;">
-Note: We observe that as the execution becomes very long, the docker response (docker run container; docker commit and docker remove container) would become lower and lower and even return None. 
-In this case:
+> [!NOTE]
+> Some instances would require many file descriptors. If you see "too many files open error", try
+>
+> ```shell
+> ulimit -a
+> ulimit -n 32768
+> ```
 
-```shell
-stop running launch
-restart docker
-docker container prune
-start running launch again
-```
-
-</blockquote>
+> [!NOTE]
+> We observe that as the execution becomes very long, the docker response (docker run container; docker commit and docker remove container) would become lower and lower and even return None.
+> In this case:
+>
+> ```shell
+> stop running launch
+> docker ps -a
+> docker rm -f all stuck/dead containers
+> start running launch again
+> ```
 
 
 ## Validation
@@ -194,16 +207,15 @@ cd ../
 # For Windows system if there are decoding issues: $env:PYTHONUTF8="1" ; $env:PYTHONIOENCODING="utf-8"
 
 # Get Fail to Pass
-# apply test_patch -> build -> apply gold_patch -> build
-# test is run 3 times automatically in validation.py to filter flaky instances
+# test is run 3 times automatically in validation.py to filter flaky (unstable) instances
 python -m  evaluation.validation \
-    --input_dir launch/data/examples/organize.jsonl \
+    --input_dir launch/data/examples/organize.jsonl \# or result.jsonl if you use adjacent_commit_run.py
     --output_dir logs/val \
     --platform  linux \#or windows
     --workers  4 \
     --overwrite  0 # or 1 for yes
 
-# filter instances that fail when only apply test_patch -> apply gold_patch -> build
+# some repos always have different test values / test names for each run; evaluation with the gold patches filters out these indeterminate instances.
 python -m  evaluation.evaluation \
     --dataset logs/val/validated_instances.jsonl \
     --output_dir logs/eval \

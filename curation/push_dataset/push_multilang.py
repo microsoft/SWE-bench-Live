@@ -4,10 +4,16 @@ import json
 ds = {}
 
 # 1. 加载原始数据集
-with open("logs/rust/verified_instances.jsonl") as f:
+with open("logs/rust/validated_instances.jsonl") as f:
     ds["rust"] = [json.loads(i) for i in f]
-with open("logs/go/verified_instances.jsonl") as f:
+with open("logs/go/validated_instances.jsonl") as f:
     ds["go"] = [json.loads(i) for i in f]
+
+for lang in ds.keys():
+    for i in range(len(ds[lang])):
+        repo = ds[lang][i]["repo"]
+        base_commit = ds[lang][i]["base_commit"]
+        ds[lang][i]["commit_url"] = f"https://github.com/{repo}/tree/{base_commit}"
 
 print("data loaded")
 
