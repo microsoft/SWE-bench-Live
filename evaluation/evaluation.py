@@ -59,7 +59,12 @@ def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
 def default_pytest_parser(log: str) -> dict[str, str]:
     mapping = parse_log_pytest(log, None)
     for test in mapping.keys():
-        if 'pass' in mapping[test].lower():
+        # Pytest XFAIL means an expected failure remained expected. SWE-bench
+        # grading treats XFAIL identically to PASSED for FAIL_TO_PASS and as
+        # maintained for PASS_TO_PASS, so do not collapse it into fail here.
+        if mapping[test].upper() == 'XFAIL':
+            mapping[test] = 'pass'
+        elif 'pass' in mapping[test].lower():
             mapping[test] = 'pass'
         elif 'skip' in mapping[test].lower():
             mapping[test] = 'skip'
