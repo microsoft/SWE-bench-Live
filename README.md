@@ -109,7 +109,8 @@ If you refer to the SWE task creation pipeline of SWE-bench-Live, or SWE-bench-L
 @article{zhang2025swebenchgoeslive,
   title={SWE-bench Goes Live!},
   author={Linghao Zhang and Shilin He and Chaoyun Zhang and Yu Kang and Bowen Li and Chengxing Xie and Junhao Wang and Maoquan Wang and Yufan Huang and Shengyu Fu and Elsie Nallipogu and Qingwei Lin and Yingnong Dang and Saravan Rajmohan and Dongmei Zhang},
-  journal={arXiv preprint arXiv:2505.23419},
+  journal={Advances in Neural Information Processing Systems},
+  volume={38},
   year={2025}
 }
 
@@ -120,7 +121,7 @@ If you refer to the automated build and test tool _RepoLaunch_, SWE benchmarking
 ```bibtex
 @article{li2026repolaunch,
   title={RepoLaunch: Automating Build and Management of Code Repositories across Languages and Platforms},
-  author={Li, Kenan and Li, Rongzhi and Zhang, Linghao and Jin, Qirui and Zhu, Liao and Huang, Xiaosong and Zhang, Geng and Zhang, Yikai and He, Shilin and Xie, Chengxing and others},
+  author={Kenan Li and Rongzhi Li and Linghao Zhang and Qirui Jin and Liao Zhu and Xiaosong Huang and Geng Zhang and Yikai Zhang and Shilin He and Chengxing Xie and Xin Zhang and Zijian Jin and Bowen Li and Chaoyun Zhang and Yu Kang and Yufan Huang and Elsie Nallipogu and Saravan Rajmohan and Qingwei Lin and Dongmei Zhang},
   journal={arXiv preprint arXiv:2603.05026},
   year={2026}
 }
