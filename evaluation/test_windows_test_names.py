@@ -43,6 +43,18 @@ def test_ambiguous_normalization_fails_closed_and_linux_stays_exact():
     assert resolve_expected_test_name("TestLLLoad", status, "linux", index) is None
 
 
+def test_windows_fallback_decodes_go_unicode_escapes():
+    status = {
+        "TestImportSubscriptionPartialOverlapWithPrefix/myprefix.>": "pass",
+        "TestJSONCompat/should_support_JSON_not_prettified_with_final_bracket_after_newline": "pass",
+    }
+    assert resolve_expected_test_name(
+        r"TestImportSubscriptionPartialOverrlapWithPrefix/myprefix.\u003e",
+        status,
+        "windows",
+    ) == "TestImportSubscriptionPartialOverlapWithPrefix/myprefix.>"
+
+
 def test_classification_preserves_expected_names_and_statuses():
     status = {
         "github.com/hashicorp/packer/command/TestBuild": "pass",

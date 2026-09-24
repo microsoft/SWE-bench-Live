@@ -1,5 +1,6 @@
 """Windows-only test-name matching helpers for SWE-bench evaluation."""
 
+import re
 from typing import Literal
 
 TestStatus = Literal["pass", "fail", "skip"]
@@ -42,6 +43,18 @@ def build_windows_repeated_char_index(
     return index
 
 
+def _decode_go_escaped_test_name(name: str) -> str:
+    """Decode the JSON-style unicode escapes used in Go subtest metadata."""
+    try:
+        return re.sub(
+            r"\\u([0-9a-fA-F]{4})",
+            lambda match: chr(int(match.group(1), 16)),
+            name,
+        )
+    except (TypeError, ValueError):
+        return name
+
+
 def resolve_expected_test_name(
     expected_name: str,
     status: dict[str, TestStatus],
@@ -58,9 +71,12 @@ def resolve_expected_test_name(
         return expected_name
     if platform != "windows":
         return None
+    decoded_expected = _decode_go_escaped_test_name(expected_name)
+    if decoded_expected in status:
+        return decoded_expected
     if repeated_char_index is None:
         repeated_char_index = build_windows_repeated_char_index(status)
-    normalized_expected = collapse_adjacent_repeated_chars(expected_name)
+    normalized_expected = collapse_adjacent_repeated_chars(decoded_expected)
     if normalized_expected == expected_name:
         return None
     return repeated_char_index.get(normalized_expected)
