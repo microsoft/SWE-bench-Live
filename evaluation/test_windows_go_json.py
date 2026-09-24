@@ -51,7 +51,7 @@ def test_wrapped_events_override_a_conflicting_parser_status():
         '{"Package":"example/test",\n'
         '"Action":"pass","Test":"TestGatewayTLSMixedIPAndDNS"}'
     )
-    status = {"TestGatewayTLSMixedIPAndDNS": "fail"}
+    status = {"TestGatewayTLSMixedIPAndDNS": "fail", "Ghost": "fail"}
     assert extract_go_json_test_status(wrapped_log) == {
         "TestGatewayTLSMixedIPAndDNS": "pass"
     }

@@ -97,8 +97,7 @@ def filter_unsupported_go_json_status(
     if not event_status:
         return status
 
-    return {
-        name: event_status[name]
-        for name in status
-        if name in event_status
-    }
+    # The generated parser is only a lossy projection of this structured report:
+    # it can omit a real event as well as invent one.  The event map is therefore
+    # authoritative once recognizable Go JSON is present.
+    return event_status
