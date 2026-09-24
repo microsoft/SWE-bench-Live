@@ -7,30 +7,73 @@ from typing import Literal
 
 TestStatus = Literal["pass", "fail", "skip"]
 
+_TERMINAL_ACTIONS = {"pass", "fail", "skip"}
+_STATUS_SEVERITY = {"pass": 0, "skip": 1, "fail": 2}
 
-def extract_go_json_test_keys(log: str) -> set[str]:
-    """Return test keys that are backed by real ``go test -json`` events.
 
-    The Windows runner may feed a custom, regex-based parser a stream containing
-    output from many packages.  A DOTALL parser can accidentally associate a
-    later ``Test`` field with an earlier package-level failure and invent a
-    status for a test that never occurred.  JSON events are the authoritative
-    source for the package/test identity, so use only events with an explicit
-    test and terminal action.
-    """
-    keys: set[str] = set()
-    terminal_actions = {"pass", "fail", "skip"}
-    for line in log.splitlines():
-        try:
-            event = json.loads(line)
-        except (TypeError, json.JSONDecodeError):
+def _iter_json_objects(log: str):
+    """Yield JSON objects from wrapped or line-oriented command output."""
+    buf: list[str] = []
+    depth = 0
+    in_string = False
+    escape = False
+    for char in log:
+        if depth == 0:
+            if char == "{":
+                buf = [char]
+                depth = 1
+                in_string = False
+                escape = False
             continue
+        buf.append(char)
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                text = "".join(buf).replace("\r", "").replace("\n", "")
+                try:
+                    yield json.loads(text)
+                except (TypeError, json.JSONDecodeError):
+                    pass
+                buf = []
+
+
+def extract_go_json_test_status(log: str) -> dict[str, TestStatus]:
+    """Return authoritative terminal status for each Go test name.
+
+    The Windows console can wrap JSON objects across physical lines.  Parsing
+    complete objects also prevents a package-level event from being associated
+    with a later test by a DOTALL regular expression.  Test names are used as
+    keys because the evaluator's parser/status format is test-name-only; the
+    package is still required to identify a Go test event.
+    """
+    statuses: dict[str, TestStatus] = {}
+    for event in _iter_json_objects(log):
         package = event.get("Package")
         test = event.get("Test")
-        action = event.get("Action")
-        if package and test and action in terminal_actions:
-            keys.add(f"{package}::{test}")
-    return keys
+        action = str(event.get("Action", "")).lower()
+        if not package or not test or action not in _TERMINAL_ACTIONS:
+            continue
+        previous = statuses.get(test)
+        if previous is None or _STATUS_SEVERITY[action] > _STATUS_SEVERITY[previous]:
+            statuses[test] = action  # type: ignore[assignment]
+    return statuses
+
+
+def extract_go_json_test_keys(log: str) -> set[str]:
+    """Return test names backed by explicit terminal Go JSON events."""
+    return set(extract_go_json_test_status(log))
 
 
 def filter_unsupported_go_json_status(
@@ -38,21 +81,24 @@ def filter_unsupported_go_json_status(
     log: str,
     platform: str,
 ) -> dict[str, TestStatus]:
-    """Drop parser statuses that have no corresponding Go JSON test event.
+    """Filter ghost parser entries and use Go terminal events as authority.
 
-    This is deliberately Windows-only and fail-closed.  If the log does not
-    contain recognizable Go JSON events, the evaluator preserves the parser
-    output rather than guessing that a different test framework is Go.
+    This is deliberately Windows-only and fail-closed.  If no recognizable Go
+    JSON events exist, the original parser output is preserved.  When events
+    do exist, a parsed status is kept only when its test name has a terminal
+    event, and its status is replaced with that event's status.  Thus a parser
+    cannot turn a real PASS event into a false FAIL, while real failures remain
+    failures.
     """
     if platform != "windows":
         return status
 
-    event_keys = extract_go_json_test_keys(log)
-    if not event_keys:
+    event_status = extract_go_json_test_status(log)
+    if not event_status:
         return status
 
     return {
-        name: test_status
-        for name, test_status in status.items()
-        if name in event_keys
+        name: event_status[name]
+        for name in status
+        if name in event_status
     }
