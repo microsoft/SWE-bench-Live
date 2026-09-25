@@ -72,6 +72,99 @@ def default_pytest_parser(log: str) -> dict[str, str]:
             mapping[test] = 'fail'
     return mapping
 
+
+def _normalize_windows_test_name_artifacts(name: str) -> str:
+    """Normalize deterministic Windows console-wrap artifacts in test names.
+
+    Some Windows Go test names in the benchmark metadata were captured through a
+    wrapped console path. At wrap boundaries, whitespace can be injected and the
+    boundary character can be duplicated, e.g. ``ct ty`` for ``cty`` or
+    ``NumberIntVal(1 12)`` for ``NumberIntVal(12)``. This normalization is only
+    used as a fallback for Windows exact-match misses, and the fallback is
+    fail-closed when the normalized name is ambiguous.
+    """
+    text = str(name)
+    out: list[str] = []
+    idx = 0
+    while idx < len(text):
+        char = text[idx]
+        if char.isspace():
+            next_idx = idx + 1
+            while next_idx < len(text) and text[next_idx].isspace():
+                next_idx += 1
+            # Wrapped Windows output can repeat the character on the next line.
+            if out and next_idx < len(text) and text[next_idx] == out[-1]:
+                idx = next_idx + 1
+            else:
+                idx = next_idx
+            continue
+        out.append(char)
+        idx += 1
+    return "".join(out)
+
+
+def _build_windows_test_name_lookup(test_names: list[str]) -> dict[str, str]:
+    """Build an unambiguous normalized-name lookup for Windows fallback matching."""
+    lookup: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for test_name in test_names:
+        key = _normalize_windows_test_name_artifacts(test_name)
+        if key in lookup and lookup[key] != test_name:
+            ambiguous.add(key)
+        else:
+            lookup[key] = test_name
+    for key in ambiguous:
+        lookup.pop(key, None)
+    return lookup
+
+
+def _resolve_test_status(
+    expected_name: str,
+    post_patch_status: dict[str, Literal['pass', 'fail', 'skip']],
+    platform: Literal["windows", "linux"],
+    windows_lookup: dict[str, str],
+) -> str | None:
+    """Return the parsed status for an expected test name, or None if unmatched."""
+    if expected_name in post_patch_status:
+        return post_patch_status[expected_name]
+    if platform == "windows":
+        actual_name = windows_lookup.get(_normalize_windows_test_name_artifacts(expected_name))
+        if actual_name is not None:
+            return post_patch_status[actual_name]
+    return None
+
+
+def _summarize_expected_tests(
+    expected_tests: list[str],
+    post_patch_status: dict[str, Literal['pass', 'fail', 'skip']],
+    platform: Literal["windows", "linux"],
+) -> dict[str, list[str]]:
+    """Bucket expected tests while preserving benchmark expected names.
+
+    Exact names are always preferred. Windows normalization is only a fallback for
+    exact misses and only when it maps to one actual parsed test name.
+    """
+    windows_lookup = _build_windows_test_name_lookup(list(post_patch_status.keys())) if platform == "windows" else {}
+    summary: dict[str, list[str]] = {
+        "success": [],
+        "failure": [],
+        "skipped": [],
+        "missing": [],
+    }
+    for expected_name in expected_tests:
+        status = _resolve_test_status(expected_name, post_patch_status, platform, windows_lookup)
+        if status is None:
+            summary["missing"].append(expected_name)
+            continue
+        normalized_status = status.lower()
+        if "pass" in normalized_status:
+            summary["success"].append(expected_name)
+        elif "skip" in normalized_status:
+            summary["skipped"].append(expected_name)
+        else:
+            summary["failure"].append(expected_name)
+    return summary
+
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
         med = "x86_64"
@@ -171,24 +264,19 @@ def run_instance(
             platform,
             instance_output_dir
     )
-    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
-    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
+    pass_to_pass = _summarize_expected_tests(instance["PASS_TO_PASS"], res, platform)
+    fail_to_pass = _summarize_expected_tests(instance["FAIL_TO_PASS"], res, platform)
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
-        "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
-        }, 
-        "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
-        },
+        "PASS_TO_PASS": pass_to_pass,
+        "FAIL_TO_PASS": fail_to_pass,
     }
-    f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
-        or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
-    if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
+    f2p = (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"])) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
+        and (len(report["FAIL_TO_PASS"]["skipped"]) == 0) \
+        and (len(report["FAIL_TO_PASS"]["missing"]) == 0)
+    if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and f2p:
         report["resolved"] = True
         print("Success!", instance["instance_id"], flush=True)
