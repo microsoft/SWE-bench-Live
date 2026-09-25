@@ -10,6 +10,7 @@ from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+from evaluation.windows_test_names import classify_expected_tests
 
 TIMEOUT = 150*60
 
@@ -171,24 +172,17 @@ def run_instance(
             platform,
             instance_output_dir
     )
-    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
-    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
+    pass_to_pass = classify_expected_tests(instance["PASS_TO_PASS"], res, platform)
+    fail_to_pass = classify_expected_tests(instance["FAIL_TO_PASS"], res, platform)
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
-        "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
-        }, 
-        "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
-        },
+        "PASS_TO_PASS": pass_to_pass,
+        "FAIL_TO_PASS": fail_to_pass,
     }
-    f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
-        or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
+    f2p = (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"])) \
+        and (len(report["FAIL_TO_PASS"]["failure"]) == 0)
     if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
-        and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
         report["resolved"] = True
         print("Success!", instance["instance_id"], flush=True)
