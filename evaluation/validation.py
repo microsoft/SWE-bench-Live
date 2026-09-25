@@ -2,6 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.windows_go_json import filter_windows_go_json_status
 import json
 from typing import Literal, TypedDict
 from fire import Fire
@@ -55,6 +56,11 @@ def validate_instance(
     with open(os.path.join(output_dir, "pre_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(pre_patch_log)
     pre_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, pre_patch_log)
+    pre_patch_status = filter_windows_go_json_status(
+        pre_patch_status,
+        pre_patch_log,
+        platform,
+    )
     container.cleanup()
     del container
 
@@ -70,7 +76,11 @@ def validate_instance(
         container.send_command(test_cmd)
         post_patch_log: str = container.send_command(print_cmd).output
         post_patch_log_accumulate += f"eval No.{check} \n\n========  \n\n{post_patch_log} \n\n"
-        post_patch_status_under_inspect[check] = run_parser(parser, post_patch_log)
+        post_patch_status_under_inspect[check] = filter_windows_go_json_status(
+            run_parser(parser, post_patch_log),
+            post_patch_log,
+            platform,
+        )
         container.cleanup()
         del container
     all_tests = set(post_patch_status_under_inspect[0].keys()) | set(post_patch_status_under_inspect[1].keys()) | set(post_patch_status_under_inspect[2].keys())
