@@ -1,6 +1,8 @@
 from datasets import load_dataset, DatasetDict, Features, Value, Sequence, Dataset
 import json
 
+from curation.windows_test_commands import normalize_windows_test_commands
+
 ds = {}
 
 
@@ -30,6 +32,7 @@ for key in ds.keys():
         ds[key][idx] = {
             field: ds[key][idx][field] for field in all_fields
         }
+        ds[key][idx]["test_cmds"] = normalize_windows_test_commands(ds[key][idx]["test_cmds"])
         ds[key][idx]["docker_image"] = get_default_image_name(ds[key][idx]["instance_id"], "win")
     ds[key] = Dataset.from_list(ds[key])
 
