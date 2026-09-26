@@ -41,6 +41,17 @@ def test_later_time_boundary_recovers_after_malformed_object():
     assert statuses == {"TestEmptyStringDQ": "pass"}
 
 
+def test_recovers_overlapped_character_at_windows_wrap_boundary():
+    raw = _event("example/conf", "pass", "TestOverlappedBoundary")
+    # The physical capture repeats the boundary quote at the start of the next
+    # line. Dropping only the newline would produce invalid JSON (``\"\"``).
+    cut = raw.index('"Test"') + len('"Test"')
+    wrapped = raw[:cut] + "\n" + raw[cut - 1:]
+    assert extract_go_json_test_status(wrapped) == {
+        "TestOverlappedBoundary": "pass",
+    }
+
+
 def test_non_windows_and_non_go_logs_keep_existing_status():
     status = {"TestSomething": "fail"}
     assert filter_windows_go_json_status(status, "FAILED TestSomething", "linux") == status

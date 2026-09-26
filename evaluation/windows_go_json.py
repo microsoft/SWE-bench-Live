@@ -48,13 +48,35 @@ def _iter_balanced_json_objects(log: str) -> Iterator[dict]:
                 buffer = []
 
 
+def _repair_wrapped_capture_lines(chunk: str) -> str:
+    """Join a Windows-wrapped JSON event without retaining boundary duplicates.
+
+    The Windows capture path can repeat the character at a physical wrap
+    boundary: one copy terminates the previous line and another starts the
+    next line.  Removing only the newline (the old recovery behaviour) turns
+    ``.../j`` + ``jesseduffield`` into ``.../jjesseduffield`` and can even
+    produce invalid JSON when the repeated character is a quote.  A duplicate
+    is removed only when it is the first character of a continuation line and
+    exactly matches the last character already retained.
+    """
+    lines = chunk.replace("\r", "").split("\n")
+    if not lines:
+        return ""
+    repaired = lines[0]
+    for line in lines[1:]:
+        if line and repaired and line[0] == repaired[-1]:
+            line = line[1:]
+        repaired += line
+    return repaired
+
+
 def _iter_time_delimited_go_json_objects(log: str) -> Iterator[dict]:
     """Recover Go JSON events whose physical lines were split by Windows.
 
     A Go `-json` event begins with a Time field.  Windows console capture can
     insert physical line breaks at arbitrary columns, including inside a JSON
     string, which makes a global brace scanner lose synchronization.  Splitting
-    only at the next physical Go event boundary and then removing those capture
+    only at the next physical Go event boundary and repairing those capture
     line breaks restores each individual object without parsing arbitrary log
     text.
     """
@@ -62,7 +84,7 @@ def _iter_time_delimited_go_json_objects(log: str) -> Iterator[dict]:
     decoder = json.JSONDecoder()
     for index, start_match in enumerate(starts):
         end = starts[index + 1].start() if index + 1 < len(starts) else len(log)
-        candidate = log[start_match.start() : end].replace("\r", "").replace("\n", "")
+        candidate = _repair_wrapped_capture_lines(log[start_match.start() : end])
         try:
             event, _ = decoder.raw_decode(candidate)
         except json.JSONDecodeError:
