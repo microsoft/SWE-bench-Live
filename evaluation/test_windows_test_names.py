@@ -55,6 +55,21 @@ def test_windows_fallback_decodes_go_unicode_escapes():
     ) == "TestImportSubscriptionPartialOverlapWithPrefix/myprefix.>"
 
 
+def test_classification_assigns_collision_group_by_unique_minimum_cost():
+    status = {
+        "TestGetStashEntries/Severall_stash_entries_found": "pass",
+        "TestGetStashEntries/Several_stassh_entries_found": "pass",
+    }
+    expected = [
+        "TestGetStashEntries/Several_staash_entries_found",
+        "TestGetStashEntries/Severaal_stash_entries_found",
+    ]
+    assert classify_expected_tests(expected, status, "windows") == {
+        "success": expected,
+        "failure": [],
+    }
+
+
 def test_classification_preserves_expected_names_and_statuses():
     status = {
         "github.com/hashicorp/packer/command/TestBuild": "pass",
