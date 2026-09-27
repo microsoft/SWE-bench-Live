@@ -126,6 +126,9 @@ def evaluate_instance(
     post_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
+    if platform == "windows":
+        from evaluation.windows_tap_capture import assert_complete_numbered_tap_capture
+        assert_complete_numbered_tap_capture(post_patch_log)
     if parser.lower().strip() == "pytest":
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
