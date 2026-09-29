@@ -1,4 +1,5 @@
 import sys, os
+import ntpath
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
@@ -8,6 +9,45 @@ from fire import Fire
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 TIMEOUT = 90*60
+
+
+class ValidationInfrastructureError(RuntimeError):
+    """Validation could not establish that grading uses the patched worktree."""
+
+
+def _windows_path_equal(left: str, right: str) -> bool:
+    return ntpath.normcase(ntpath.normpath(left)) == ntpath.normcase(ntpath.normpath(right))
+
+
+def _cleanup_and_raise(container, message: str) -> None:
+    try:
+        container.cleanup()
+    except Exception:
+        pass
+    raise ValidationInfrastructureError(message)
+
+
+def _effective_repository_root(container) -> str:
+    result = container.send_command("git rev-parse --show-toplevel")
+    if int(result.metadata.exit_code) != 0 or not (result.output or "").strip():
+        _cleanup_and_raise(container, "cannot determine repository root after patch application")
+    return (result.output or "").strip().splitlines()[-1].strip()
+
+
+def _assert_grading_root(
+    container,
+    expected_root: str,
+    platform: Literal["windows", "linux"],
+    instance_id: str,
+) -> None:
+    """Fail closed when rebuild moves validation to another Git worktree."""
+    actual_root = _effective_repository_root(container)
+    same_root = _windows_path_equal(actual_root, expected_root) if platform == "windows" else actual_root == expected_root
+    if not same_root:
+        _cleanup_and_raise(
+            container,
+            f"{instance_id} validation commands would run from repository root {actual_root!r}, not patched root {expected_root!r}",
+        )
 
 class ExecutionResult(TypedDict):
     instance_id: str
@@ -48,8 +88,10 @@ def validate_instance(
                     ) -> ValidationResult:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
     container.apply_patch(test_patch, verbose=True)
+    pre_patch_root = _effective_repository_root(container)
     # Remember to rebuild after modifications to source codes !!!
     container.send_command(rebuild_cmd)
+    _assert_grading_root(container, pre_patch_root, platform, instance_id)
     container.send_command(test_cmd)
     pre_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "pre_patch_log.txt"), "w", encoding="utf-8") as f:
@@ -66,7 +108,9 @@ def validate_instance(
         container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
         container.apply_patch(test_patch, verbose=True)
         container.apply_patch(solution_patch, verbose=True)
+        post_patch_root = _effective_repository_root(container)
         container.send_command(rebuild_cmd)
+        _assert_grading_root(container, post_patch_root, platform, instance_id)
         container.send_command(test_cmd)
         post_patch_log: str = container.send_command(print_cmd).output
         post_patch_log_accumulate += f"eval No.{check} \n\n========  \n\n{post_patch_log} \n\n"
