@@ -6,12 +6,47 @@ import json
 import argparse
 import traceback
 import re
+import ntpath
 from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
 TIMEOUT = 150*60
+
+
+class EvaluationInfrastructureError(RuntimeError):
+    """The evaluator could not establish a trustworthy benchmark revision."""
+
+
+def _windows_path_equal(left: str, right: str) -> bool:
+    return ntpath.normcase(ntpath.normpath(left)) == ntpath.normcase(ntpath.normpath(right))
+
+
+def _raise_root_identity_error(container, message: str) -> None:
+    try:
+        container.cleanup()
+    except Exception:
+        pass
+    raise EvaluationInfrastructureError(message)
+
+
+def _effective_repository_root(container) -> str:
+    result = container.send_command("git rev-parse --show-toplevel")
+    if int(result.metadata.exit_code) != 0 or not (result.output or "").strip():
+        _raise_root_identity_error(container, "cannot determine repository root after patch application")
+    return (result.output or "").strip().splitlines()[-1].strip()
+
+
+def _assert_grading_root(container, expected_root: str, platform: Literal["windows", "linux"], instance_id: str) -> None:
+    """Fail closed when rebuild has moved grading to a different Git worktree."""
+    actual_root = _effective_repository_root(container)
+    same_root = _windows_path_equal(actual_root, expected_root) if platform == "windows" else actual_root == expected_root
+    if not same_root:
+        _raise_root_identity_error(
+            container,
+            f"{instance_id} grading commands would run from repository root {actual_root!r}, not patched root {expected_root!r}",
+        )
 
 
 def normalize_month(month: str) -> str:
@@ -114,9 +149,12 @@ def evaluate_instance(
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
-    # Remember to rebuild after modifications to source codes !!!
+    patched_root = _effective_repository_root(container)
+    # Rebuild commands may intentionally change directory.  The test command
+    # must still operate on the same Git worktree that received both patches.
     if rebuild_cmd.strip():
         container.send_command(rebuild_cmd)
+    _assert_grading_root(container, patched_root, platform, instance_id)
     if not print_cmd.strip():
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
         container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
