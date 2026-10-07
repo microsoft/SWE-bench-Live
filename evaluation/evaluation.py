@@ -12,6 +12,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
 TIMEOUT = 150*60
+RUNTIME_TIMEOUT_EXIT_CODE = 124
+
+
+class EvaluationCommandTimeout(RuntimeError):
+    """A terminal runtime timeout invalidates later commands in that container."""
+
+
+def command_timed_out(result: object) -> bool:
+    """Return true only for RepoLaunch's explicit terminal timeout result."""
+    try:
+        return int(result.metadata.exit_code) == RUNTIME_TIMEOUT_EXIT_CODE
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def normalize_month(month: str) -> str:
@@ -111,30 +124,43 @@ def evaluate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-    container.apply_patch(test_patch)
-    container.apply_patch(solution_patch, verbose=True)
-    # Remember to rebuild after modifications to source codes !!!
-    if rebuild_cmd.strip():
-        container.send_command(rebuild_cmd)
-    if not print_cmd.strip():
-        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
-        container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
-        test_cmd = "bash run_test.sh > testlog.out 2>&1"
-        print_cmd = "cat testlog.out"
-    container.send_command(test_cmd)
-    post_patch_log: str = container.send_command(print_cmd).output
-    with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
-        f.write(post_patch_log)
-    if parser.lower().strip() == "pytest":
-        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
-        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
-    else:
-        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
-    container.cleanup()
-    with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
-        json.dump(post_patch_status, f, indent = True)
-    return post_patch_status
+    container: SetupRuntime | None = None
+    try:
+        container = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+        container.apply_patch(test_patch)
+        container.apply_patch(solution_patch, verbose=True)
+        # Remember to rebuild after modifications to source codes !!!
+        if rebuild_cmd.strip():
+            rebuild_result = container.send_command(rebuild_cmd)
+            if command_timed_out(rebuild_result):
+                raise EvaluationCommandTimeout("rebuild command timed out")
+        if not print_cmd.strip():
+            # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+            container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
+            test_cmd = "bash run_test.sh > testlog.out 2>&1"
+            print_cmd = "cat testlog.out"
+        test_result = container.send_command(test_cmd)
+        if command_timed_out(test_result):
+            # RepoLaunch tears down an isolated container after a terminal timeout.
+            # Do not issue print_cmd against the stopped container or lose timeout provenance.
+            raise EvaluationCommandTimeout("test command timed out")
+        post_patch_log: str = container.send_command(print_cmd).output
+        with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
+            f.write(post_patch_log)
+        if parser.lower().strip() == "pytest":
+            # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+            post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
+        else:
+            post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
+        with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
+            json.dump(post_patch_status, f, indent=True)
+        return post_patch_status
+    finally:
+        if container is not None:
+            try:
+                container.cleanup()
+            except Exception:
+                pass
 
 def run_instance(
                     instance: dict,
@@ -159,18 +185,32 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
-            instance["instance_id"],
-            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
-            instance["test_patch"],
-            instance["pred_patch"],
-            instance.get("log_parser", instance.get("parser", "")),
-            platform,
-            instance_output_dir
-    )
+    try:
+        res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+                instance["instance_id"],
+                instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["pred_patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir
+        )
+    except EvaluationCommandTimeout as exc:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": False,
+            "failure_class": "timeout",
+            "error": str(exc),
+            "PASS_TO_PASS": {"success": [], "failure": list(instance["PASS_TO_PASS"])},
+            "FAIL_TO_PASS": {"success": [], "failure": list(instance["FAIL_TO_PASS"])},
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Failed...", instance["instance_id"], "timeout", flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
