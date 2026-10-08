@@ -2,6 +2,10 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.pytest_collection_contract import (
+    PytestCollectionUnavailable,
+    require_pytest_test_execution,
+)
 import json
 import argparse
 import traceback
@@ -127,6 +131,13 @@ def evaluate_instance(
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
     if parser.lower().strip() == "pytest":
+        # A collection-only pytest run has not executed any candidate-relevant
+        # test.  Do not convert it into an ordinary failed patch result.
+        try:
+            require_pytest_test_execution(post_patch_log)
+        except PytestCollectionUnavailable:
+            container.cleanup()
+            raise
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
     else:
@@ -159,18 +170,31 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
-            instance["instance_id"],
-            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
-            instance["test_patch"],
-            instance["pred_patch"],
-            instance.get("log_parser", instance.get("parser", "")),
-            platform,
-            instance_output_dir
-    )
+    try:
+        res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+                instance["instance_id"],
+                instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["pred_patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir
+        )
+    except PytestCollectionUnavailable as exc:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "pytest_collection_failed_without_test_execution",
+            "pytest_collection_failure": exc.evidence,
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Incomplete...", instance["instance_id"], flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
