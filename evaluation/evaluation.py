@@ -2,6 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.command_normalization import normalize_published_shell_command
 import json
 import argparse
 import traceback
@@ -162,9 +163,9 @@ def run_instance(
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
+            normalize_published_shell_command(" ; ".join(instance.get("rebuild_cmds", []))),
+            normalize_published_shell_command(" ; ".join(instance.get("test_cmds", []))),
+            normalize_published_shell_command(" ; ".join(instance.get("print_cmds", []))),
             instance["test_patch"],
             instance["pred_patch"],
             instance.get("log_parser", instance.get("parser", "")),

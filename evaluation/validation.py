@@ -2,6 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.command_normalization import normalize_published_shell_command
 import json
 from typing import Literal, TypedDict
 from fire import Fire
@@ -126,9 +127,9 @@ def run_instance(instance: dict[str, str],
     return validate_instance(
                 instance["instance_id"],
                 instance["docker_image"],
-                " ; ".join(instance["rebuild_cmds"]),
-                " ; ".join(instance["test_cmds"]),
-                " ; ".join(instance["print_cmds"]),
+                normalize_published_shell_command(" ; ".join(instance["rebuild_cmds"])),
+                normalize_published_shell_command(" ; ".join(instance["test_cmds"])),
+                normalize_published_shell_command(" ; ".join(instance["print_cmds"])),
                 instance["test_patch"],
                 instance["patch"],
                 instance.get("log_parser", instance.get("parser", "")),
