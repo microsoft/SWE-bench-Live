@@ -14,6 +14,28 @@ from enum import Enum
 TIMEOUT = 150*60
 
 
+class PublishedTestCommandUnavailableError(RuntimeError):
+    """The published Windows test command cannot start in its task image."""
+
+    def __init__(self, executables: list[str]) -> None:
+        self.executables = executables
+        super().__init__(", ".join(executables))
+
+
+def missing_windows_command_executables(output: str) -> list[str]:
+    """Return commands that PowerShell explicitly reports as unavailable.
+
+    This deliberately matches only PowerShell's command-not-found diagnostic from
+    the published test command. It does not classify ordinary nonzero test output.
+    """
+    pattern = re.compile(
+        r"The term '([^']+)' is not recognized as the name of a cmdlet, function,\s*"
+        r"script file, or operable program\.",
+        re.IGNORECASE,
+    )
+    return list(dict.fromkeys(match.group(1) for match in pattern.finditer(output)))
+
+
 def normalize_month(month: str) -> str:
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError(f"Invalid month format: {month}. Expected YYYY-MM.")
@@ -122,7 +144,13 @@ def evaluate_instance(
         container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
         test_cmd = "bash run_test.sh > testlog.out 2>&1"
         print_cmd = "cat testlog.out"
-    container.send_command(test_cmd)
+    test_result = container.send_command(test_cmd)
+    test_output = test_result.output or ""
+    if platform == "windows":
+        missing_executables = missing_windows_command_executables(test_output)
+        if missing_executables:
+            container.cleanup()
+            raise PublishedTestCommandUnavailableError(missing_executables)
     post_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
@@ -159,18 +187,31 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
-            instance["instance_id"],
-            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
-            instance["test_patch"],
-            instance["pred_patch"],
-            instance.get("log_parser", instance.get("parser", "")),
-            platform,
-            instance_output_dir
-    )
+    try:
+        res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+                instance["instance_id"],
+                instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["pred_patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir
+        )
+    except PublishedTestCommandUnavailableError as e:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "published_test_command_executable_missing",
+            "missing_command_executables": e.executables,
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Unavailable...", instance["instance_id"], flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
