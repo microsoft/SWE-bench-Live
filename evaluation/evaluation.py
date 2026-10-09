@@ -14,6 +14,107 @@ from enum import Enum
 TIMEOUT = 150*60
 
 
+_WINDOWS_GO_TEST_COMMAND = re.compile(r"\bgo(?:\.exe)?\s+test\b", re.IGNORECASE)
+_SYSTEMATIC_EXPECTED_NAME_MINIMUM = 20
+_SYSTEMATIC_EXPECTED_NAME_MINIMUM_MUTATIONS = 3
+_SYSTEMATIC_EXPECTED_NAME_MINIMUM_RATIO = 0.20
+
+
+def _test_name_component(name: str) -> str:
+    """Return the test portion of an optionally package-qualified identity."""
+    return str(name).rsplit("::", 1)[-1]
+
+
+def _edit_distance(left: str, right: str) -> int:
+    previous = list(range(len(right) + 1))
+    for row, left_char in enumerate(left, 1):
+        current = [row]
+        for column, right_char in enumerate(right, 1):
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + (left_char != right_char),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def systematic_windows_go_expected_name_corruption(
+    instance: dict,
+    status: dict[str, str],
+) -> dict | None:
+    """Detect a systematic published-name corruption without remapping tests.
+
+    This is an evaluator-integrity guard, not fuzzy grading. It requires a
+    Windows ``go test`` command, a sufficiently large expected-test corpus,
+    multiple uniquely observed one-edit passing neighbors, and every published
+    FAIL_TO_PASS name to have that same one-edit passing evidence. Ordinary
+    misspellings, ambiguous neighbors, non-Go rows, and normal test failures
+    remain on the regular evaluation path.
+    """
+    if not _WINDOWS_GO_TEST_COMMAND.search(" ; ".join(instance.get("test_cmds", []) or [])):
+        return None
+
+    pass_to_pass = [str(name) for name in instance.get("PASS_TO_PASS", []) or []]
+    fail_to_pass = [str(name) for name in instance.get("FAIL_TO_PASS", []) or []]
+    expected = list(dict.fromkeys(pass_to_pass + fail_to_pass))
+    if len(expected) < _SYSTEMATIC_EXPECTED_NAME_MINIMUM or len(fail_to_pass) < _SYSTEMATIC_EXPECTED_NAME_MINIMUM_MUTATIONS:
+        return None
+
+    # Prefer package-qualified Go JSON identities when present. Some Windows
+    # wrappers later synthesize bare expected names while scoring a nonzero
+    # aggregate command; those entries are not parser observations and must not
+    # mask corruption in the published expected-name corpus. Older parsers may
+    # only expose bare raw identities, so retain that raw form when no qualified
+    # identities were emitted at all.
+    qualified_observed = [str(name) for name in status if "::" in str(name)]
+    observed = qualified_observed or [str(name) for name in status]
+    observed_components = {_test_name_component(name) for name in observed}
+    observed_passes = [
+        str(name)
+        for name, outcome in status.items()
+        if (not qualified_observed or "::" in str(name))
+        and str(outcome).lower() == "pass"
+    ]
+    mutations: dict[str, str] = {}
+    for expected_name in expected:
+        expected_component = _test_name_component(expected_name)
+        if expected_component in observed_components:
+            continue
+        candidate_components = {
+            _test_name_component(actual)
+            for actual in observed_passes
+            if _edit_distance(expected_component, _test_name_component(actual)) == 1
+        }
+        if len(candidate_components) == 1:
+            mutations[expected_name] = next(
+                actual for actual in observed_passes
+                if _test_name_component(actual) in candidate_components
+            )
+
+    affected_fail_to_pass = {
+        expected_name: mutations[expected_name]
+        for expected_name in fail_to_pass
+        if expected_name in mutations
+    }
+    mutation_ratio = len(mutations) / len(expected)
+    if (
+        len(mutations) < _SYSTEMATIC_EXPECTED_NAME_MINIMUM_MUTATIONS
+        or mutation_ratio < _SYSTEMATIC_EXPECTED_NAME_MINIMUM_RATIO
+        or len(affected_fail_to_pass) != len(fail_to_pass)
+    ):
+        return None
+    return {
+        "expected_test_count": len(expected),
+        "unique_distance_one_passing_neighbors": mutations,
+        "unique_distance_one_passing_neighbor_count": len(mutations),
+        "unique_distance_one_passing_neighbor_ratio": mutation_ratio,
+        "affected_fail_to_pass": affected_fail_to_pass,
+    }
+
+
 def normalize_month(month: str) -> str:
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError(f"Invalid month format: {month}. Expected YYYY-MM.")
@@ -171,6 +272,20 @@ def run_instance(
             platform,
             instance_output_dir
     )
+    if platform == "windows":
+        corruption = systematic_windows_go_expected_name_corruption(instance, res)
+        if corruption is not None:
+            report = {
+                "instance_id": instance["instance_id"],
+                "resolved": None,
+                "grading_status": "unavailable",
+                "failure_class": "systematic_windows_go_expected_name_corruption",
+                "systematic_expected_name_corruption": corruption,
+            }
+            with open(report_dir, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=True)
+            print("Unavailable...", instance["instance_id"], flush=True)
+            return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
