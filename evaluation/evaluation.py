@@ -2,6 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.windows_go_cgo_prerequisite_contract import windows_go_cgo_prerequisite_failure
 import json
 import argparse
 import traceback
@@ -110,7 +111,7 @@ def evaluate_instance(
                     parser: str,
                     platform: Literal["windows", "linux"],
                     output_dir: str,
-                    ) -> dict[str, Literal['pass', 'fail', 'skip']]:
+                    ) -> tuple[dict[str, Literal['pass', 'fail', 'skip']], dict[str, object] | None]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
@@ -126,6 +127,14 @@ def evaluate_instance(
     post_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
+    cgo_prerequisite_failure = windows_go_cgo_prerequisite_failure(post_patch_log, platform)
+    if cgo_prerequisite_failure is not None:
+        with open(os.path.join(output_dir, "cgo_prerequisite_failure.json"), "w", encoding="utf-8") as f:
+            json.dump(cgo_prerequisite_failure, f, indent=True)
+        container.cleanup()
+        with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
+            json.dump({}, f, indent=True)
+        return {}, cgo_prerequisite_failure
     if parser.lower().strip() == "pytest":
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
@@ -134,7 +143,7 @@ def evaluate_instance(
     container.cleanup()
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
-    return post_patch_status
+    return post_patch_status, cgo_prerequisite_failure
 
 def run_instance(
                     instance: dict,
@@ -159,7 +168,7 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+    res, cgo_prerequisite_failure = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
             " ; ".join(instance.get("rebuild_cmds", [])),
@@ -171,6 +180,23 @@ def run_instance(
             platform,
             instance_output_dir
     )
+    if cgo_prerequisite_failure is not None:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "windows_go_cgo_prerequisite_unavailable",
+            "cgo_prerequisite_failure": cgo_prerequisite_failure,
+            "error": (
+                "The published Windows Go command reached a known CGO prerequisite "
+                "compiler signature before the affected test packages could be built. "
+                "The row cannot grade a candidate until the task image or test contract is revalidated."
+            ),
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Grading unavailable...", instance["instance_id"], flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
