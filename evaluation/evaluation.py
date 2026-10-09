@@ -72,6 +72,74 @@ def default_pytest_parser(log: str) -> dict[str, str]:
             mapping[test] = 'fail'
     return mapping
 
+_PATCH_DESTINATION = re.compile(r"^\+\+\+ b/(.+)$")
+_VSCODE_EXTENSION_TEST_PATH = re.compile(r"^extensions/([^/]+)/src/test/.+\.(?:ts|tsx)$", re.IGNORECASE)
+
+
+def _changed_patch_paths(patch: str) -> list[str]:
+    """Return ordinary unified-diff destination paths, conservatively."""
+    return [
+        match.group(1)
+        for line in str(patch or "").splitlines()
+        if (match := _PATCH_DESTINATION.match(line))
+    ]
+
+
+def windows_vscode_extension_test_contract_unobservable(
+    instance: dict,
+    solution_patch: str,
+    platform: Literal["windows", "linux"],
+    post_patch_status: dict,
+    post_patch_log: str,
+) -> dict | None:
+    """Fail closed when a VS Code extension regression cannot reach the core runner.
+
+    This narrowly recognizes a Windows VS Code contract in which the official
+    patch changes extension TypeScript tests, the candidate changes production
+    code in that same extension, and the published command launches only
+    ``test/unit/node/index.js``.  The guard requires a nonempty parsed core
+    status/log and requires that neither the extension marker nor any related
+    expected FAIL_TO_PASS identity appears in them.  It never infers whether
+    the candidate is correct; it only prevents unrelated core-test outcomes
+    from being used as an extension-candidate verdict.
+    """
+    if platform != "windows" or not post_patch_status or not str(post_patch_log or "").strip():
+        return None
+    test_command = " ; ".join(instance.get("test_cmds", []) or [])
+    if re.search(r"(?:^|[\\/\s])test[\\/]unit[\\/]node[\\/]index\.js(?:\s|$)", test_command, re.IGNORECASE) is None:
+        return None
+    official_paths = _changed_patch_paths(str(instance.get("test_patch", "") or ""))
+    candidate_paths = _changed_patch_paths(solution_patch)
+    if not official_paths or not candidate_paths:
+        return None
+    official_matches = [_VSCODE_EXTENSION_TEST_PATH.fullmatch(path) for path in official_paths]
+    if any(match is None for match in official_matches):
+        return None
+    extension_roots = {match.group(1) for match in official_matches if match is not None}
+    if len(extension_roots) != 1:
+        return None
+    extension_root = next(iter(extension_roots))
+    source_prefix = f"extensions/{extension_root}/src/"
+    if any(not path.startswith(source_prefix) or "/src/test/" in path for path in candidate_paths):
+        return None
+    marker = extension_root.replace("-", " ")
+    marker_pattern = re.compile(re.escape(marker).replace(r"\ ", r"[\s_-]*"), re.IGNORECASE)
+    if marker_pattern.search(test_command) or marker_pattern.search(str(post_patch_log)):
+        return None
+    expected = [str(name) for name in instance.get("FAIL_TO_PASS", []) or [] if str(name).strip()]
+    if not expected or any(marker_pattern.search(name) for name in expected):
+        return None
+    return {
+        "official_extension_test_paths": official_paths,
+        "candidate_extension_source_paths": candidate_paths,
+        "extension_root": extension_root,
+        "extension_marker": marker,
+        "published_test_command": test_command,
+        "published_fail_to_pass": expected,
+        "observed_terminal_identity_count": len(post_patch_status),
+    }
+
+
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
         med = "x86_64"
@@ -171,6 +239,36 @@ def run_instance(
             platform,
             instance_output_dir
     )
+    post_patch_log_path = os.path.join(instance_output_dir, "post_patch_log.txt")
+    try:
+        with open(post_patch_log_path, encoding="utf-8") as f:
+            post_patch_log = f.read()
+    except OSError:
+        post_patch_log = ""
+    extension_contract = windows_vscode_extension_test_contract_unobservable(
+        instance,
+        instance["pred_patch"],
+        platform,
+        res,
+        post_patch_log,
+    )
+    if extension_contract is not None:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "windows_vscode_extension_test_contract_unobservable_by_published_core_unit_command",
+            "windows_vscode_extension_test_contract": extension_contract,
+            "error": (
+                "The official patch changes VS Code extension tests and the candidate changes "
+                "the same extension, but the published Windows core unit command neither names "
+                "nor observes that extension. Exact candidate grading is unavailable."
+            ),
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Unavailable...", instance["instance_id"], flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
