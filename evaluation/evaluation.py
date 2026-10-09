@@ -72,6 +72,63 @@ def default_pytest_parser(log: str) -> dict[str, str]:
             mapping[test] = 'fail'
     return mapping
 
+def _snapshot_expected_identity_matches_path(expected: str, snapshot_path: str) -> bool:
+    """Return whether an expected Rust identity names a changed insta snapshot scenario."""
+    stem = os.path.basename(snapshot_path).rsplit(".", 1)[0]
+    leaf = expected.rsplit("::", 1)[-1]
+    encoded_expected = expected.replace("::", "__")
+    return stem == leaf or stem.endswith("__" + leaf) or stem.endswith("__" + encoded_expected)
+
+
+def windows_rust_snapshot_expected_test_identity_unobservable(
+    instance: dict,
+    status: dict[str, str],
+    test_log: str,
+    platform: Literal["windows", "linux"],
+) -> dict | None:
+    """Detect an unobservable expected identity from a snapshot-only Rust test patch.
+
+    This is a fail-closed safeguard: it does not map a snapshot scenario to another
+    test function. It only preserves unavailable status when a completed cargo run
+    omits every published FAIL_TO_PASS identity even though each is named by a
+    changed ``.snap`` path and the official patch changes no non-snapshot file.
+    """
+    if platform != "windows":
+        return None
+    test_command = " ; ".join(instance.get("test_cmds", []) or [])
+    if re.search(r"\bcargo\s+test\b", test_command, flags=re.IGNORECASE) is None:
+        return None
+    if re.search(r"test result:\s+ok\.", test_log, flags=re.IGNORECASE) is None:
+        return None
+    if re.search(r"test result:\s+FAILED", test_log, flags=re.IGNORECASE) is not None:
+        return None
+    changed_paths = [
+        match.group(1)
+        for line in str(instance.get("test_patch", "") or "").splitlines()
+        if (match := re.match(r"^\+\+\+ b/(.+)$", line))
+    ]
+    if not changed_paths or any(not path.lower().endswith(".snap") for path in changed_paths):
+        return None
+    expected = [str(name) for name in instance.get("FAIL_TO_PASS", []) or [] if str(name).strip()]
+    if not expected or not status:
+        return None
+    missing = [name for name in expected if name not in status]
+    if len(missing) != len(expected):
+        return None
+    matching_paths = {
+        name: [path for path in changed_paths if _snapshot_expected_identity_matches_path(name, path)]
+        for name in missing
+    }
+    if any(not paths for paths in matching_paths.values()):
+        return None
+    return {
+        "changed_snapshot_paths": changed_paths,
+        "missing_fail_to_pass": missing,
+        "snapshot_paths_by_expected_identity": matching_paths,
+        "observed_terminal_identity_count": len(status),
+    }
+
+
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
         med = "x86_64"
@@ -171,6 +228,32 @@ def run_instance(
             platform,
             instance_output_dir
     )
+    with open(os.path.join(instance_output_dir, "post_patch_log.txt"), encoding="utf-8") as f:
+        post_patch_log = f.read()
+    snapshot_identity_contract = windows_rust_snapshot_expected_test_identity_unobservable(
+        instance,
+        res,
+        post_patch_log,
+        platform,
+    )
+    if snapshot_identity_contract is not None:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "windows_rust_snapshot_expected_test_identity_unobservable",
+            "rust_snapshot_expected_test_identity_contract": snapshot_identity_contract,
+            "error": (
+                "The Windows Rust test_patch changes only insta snapshot scenario files, "
+                "but every published FAIL_TO_PASS identity is absent from the completed "
+                "cargo test status map. Exact-name grading cannot establish a candidate verdict."
+            ),
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Unavailable...", instance["instance_id"], flush=True)
+        return report
+
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
