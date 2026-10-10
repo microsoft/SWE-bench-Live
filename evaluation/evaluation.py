@@ -2,6 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.windows_metadata_integrity import windows_metadata_is_gradable
 import json
 import argparse
 import traceback
@@ -159,6 +160,23 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
+    gradable, invalid_expected_tests = windows_metadata_is_gradable(instance, platform)
+    if not gradable:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "invalid_windows_expected_test_metadata",
+            "invalid_expected_tests": invalid_expected_tests,
+            "error": (
+                "Windows expected-test metadata contains captured Go output fragments; "
+                "exact-name grading is unavailable until the dataset row is revalidated."
+            ),
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Grading unavailable...", instance["instance_id"], flush=True)
+        return report
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
