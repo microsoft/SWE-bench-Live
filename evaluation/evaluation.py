@@ -122,7 +122,7 @@ def evaluate_instance(
         container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
         test_cmd = "bash run_test.sh > testlog.out 2>&1"
         print_cmd = "cat testlog.out"
-    container.send_command(test_cmd)
+    test_result = container.send_command(test_cmd)
     post_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
@@ -131,6 +131,14 @@ def evaluate_instance(
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
     else:
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
+    if test_result.metadata.exit_code != 0:
+        # A non-zero test command means the run did not complete successfully.
+        # Keep skips intact, but never allow a terminal pass from a partial log
+        # to satisfy an expected test after the command itself failed.
+        post_patch_status = {
+            test: "fail" if status == "pass" else status
+            for test, status in post_patch_status.items()
+        }
     container.cleanup()
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
