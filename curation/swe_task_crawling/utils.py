@@ -387,6 +387,35 @@ def wrapped_requests_get(url: str, max_retries: int = 10) -> requests.Response:
                 print(f"❗️ 📢 Still got connection error after {max_retries} attempts")
                 return None
 
+_TEST_ARTIFACT_PATH_MARKERS = (
+    "test",
+    "tests",
+    "e2e",
+    "testing",
+)
+_BENCHMARK_DIRECTORY_MARKERS = (
+    "bench",
+    "benches",
+    "benchmark",
+    "benchmarks",
+)
+
+
+def is_test_artifact_path(path: str) -> bool:
+    """Return whether a changed path belongs to a test or benchmark artifact.
+
+    Benchmark sources are executable test targets for projects whose published
+    commands use ``--all-targets``.  Keep their support changes with the test
+    patch rather than making a candidate patch reintroduce removed test helpers.
+    """
+    normalized = str(path or "").lower().replace("\\", "/")
+    path_parts = normalized.split("/")
+    return (
+        any(marker in normalized for marker in _TEST_ARTIFACT_PATH_MARKERS)
+        or any(marker in path_parts for marker in _BENCHMARK_DIRECTORY_MARKERS)
+    )
+
+
 def extract_patches(pull: dict, repo: Repo) -> tuple[str, str]:
     """
     Get patch and test patch from PR
@@ -403,10 +432,7 @@ def extract_patches(pull: dict, repo: Repo) -> tuple[str, str]:
     patch_test = ""
     patch_fix  = ""
     for hunk in PatchSet(patch):
-        if any(
-            test_word in hunk.path.lower() for test_word in
-            ['test', 'tests', 'e2e', 'testing']
-        ):
+        if is_test_artifact_path(hunk.path):
             patch_test += str(hunk)
         else:
             patch_fix += str(hunk)
