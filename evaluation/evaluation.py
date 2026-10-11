@@ -72,6 +72,61 @@ def default_pytest_parser(log: str) -> dict[str, str]:
             mapping[test] = 'fail'
     return mapping
 
+_WORKFLOW_PATH = re.compile(r"^\.github/workflows/[^/]+\.ya?ml$", re.IGNORECASE)
+_WORKFLOW_UNIT_COMMAND = re.compile(r"\bpnpm(?:\.cmd)?\s+test:unit\b", re.IGNORECASE)
+_WORKFLOW_VALIDATION_COMMAND = re.compile(
+    r"(?:^|[;&|\s])(?:actionlint|yamllint|act(?:\.exe)?|gh\s+workflow)(?:\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _changed_patch_paths(patch: str) -> list[str]:
+    """Return destination paths changed by a unified diff."""
+    return [
+        match.group(1)
+        for line in str(patch or "").splitlines()
+        if (match := re.match(r"^\+\+\+ b/(.+)$", line))
+    ]
+
+
+def windows_github_actions_workflow_contract_unobservable(
+    instance: dict,
+    solution_patch: str,
+    platform: Literal["windows", "linux"],
+) -> dict | None:
+    """Detect Windows workflow-only rows that a published pnpm unit command cannot grade.
+
+    This is intentionally a narrow contract guard rather than a YAML scorer. It
+    applies only when both the official patch and the submitted solution change
+    only GitHub Actions workflow definitions, while the published Windows command
+    is ``pnpm test:unit`` and invokes no explicit workflow-validation tool.
+    Merely reading a workflow file is not semantic validation. Such a command
+    cannot provide exact evidence about either workflow change, so an unrelated
+    unit-test result must not decide the row.
+    """
+    if platform != "windows":
+        return None
+    official_paths = _changed_patch_paths(str(instance.get("test_patch", "") or ""))
+    candidate_paths = _changed_patch_paths(solution_patch)
+    if (
+        not official_paths
+        or not candidate_paths
+        or any(_WORKFLOW_PATH.fullmatch(path) is None for path in official_paths)
+        or any(_WORKFLOW_PATH.fullmatch(path) is None for path in candidate_paths)
+    ):
+        return None
+    test_command = " ; ".join(instance.get("test_cmds", []) or [])
+    if _WORKFLOW_UNIT_COMMAND.search(test_command) is None:
+        return None
+    if _WORKFLOW_VALIDATION_COMMAND.search(test_command):
+        return None
+    return {
+        "official_workflow_paths": official_paths,
+        "candidate_workflow_paths": candidate_paths,
+        "published_test_command": test_command,
+    }
+
+
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
         med = "x86_64"
@@ -159,6 +214,7 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
+    solution_patch = instance["pred_patch"]
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
@@ -166,11 +222,33 @@ def run_instance(
             " ; ".join(instance.get("test_cmds", [])),
             " ; ".join(instance.get("print_cmds", [])),
             instance["test_patch"],
-            instance["pred_patch"],
+            solution_patch,
             instance.get("log_parser", instance.get("parser", "")),
             platform,
             instance_output_dir
     )
+    workflow_contract = windows_github_actions_workflow_contract_unobservable(
+        instance,
+        solution_patch,
+        platform,
+    )
+    if workflow_contract is not None:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "windows_github_actions_workflow_contract_unobservable_by_published_unit_command",
+            "windows_github_actions_workflow_contract": workflow_contract,
+            "error": (
+                "The official and candidate patches change only GitHub Actions workflow files, "
+                "but the published Windows pnpm test:unit command does not validate or execute "
+                "those workflow definitions. Exact candidate grading is unavailable."
+            ),
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Unavailable...", instance["instance_id"], flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
