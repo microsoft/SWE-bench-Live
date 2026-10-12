@@ -11,7 +11,9 @@ from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
-TIMEOUT = 150*60
+# SetupRuntime.command_timeout is expressed in minutes (RepoLaunch converts it to seconds).
+# Keep the evaluator limit at 150 minutes; passing 150 * 60 here would become 9,000 minutes.
+COMMAND_TIMEOUT_MINUTES = 150
 
 
 def normalize_month(month: str) -> str:
@@ -111,7 +113,9 @@ def evaluate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+    container: SetupRuntime = SetupRuntime.from_launch_image(
+        image, instance_id, platform, command_timeout=COMMAND_TIMEOUT_MINUTES
+    )
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!

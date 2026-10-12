@@ -7,7 +7,9 @@ from typing import Literal, TypedDict
 from fire import Fire
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-TIMEOUT = 90*60
+# SetupRuntime.command_timeout is expressed in minutes (RepoLaunch converts it to seconds).
+# Keep validation at 90 minutes; passing 90 * 60 here would become 5,400 minutes.
+COMMAND_TIMEOUT_MINUTES = 90
 
 class ExecutionResult(TypedDict):
     instance_id: str
@@ -46,7 +48,9 @@ def validate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> ValidationResult:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+    container: SetupRuntime = SetupRuntime.from_launch_image(
+        image, instance_id, platform, command_timeout=COMMAND_TIMEOUT_MINUTES
+    )
     container.apply_patch(test_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
     container.send_command(rebuild_cmd)
@@ -63,7 +67,9 @@ def validate_instance(
     post_patch_log_accumulate: str = ""
     # 3 validation for stable states
     for check in range(3):
-        container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+        container: SetupRuntime = SetupRuntime.from_launch_image(
+            image, instance_id, platform, command_timeout=COMMAND_TIMEOUT_MINUTES
+        )
         container.apply_patch(test_patch, verbose=True)
         container.apply_patch(solution_patch, verbose=True)
         container.send_command(rebuild_cmd)
