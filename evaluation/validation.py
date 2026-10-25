@@ -7,7 +7,9 @@ from typing import Literal, TypedDict
 from fire import Fire
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-TIMEOUT = 90*60
+# SetupRuntime.command_timeout is expressed in minutes (RepoLaunch converts it to seconds).
+# Keep validation at 90 minutes; passing 90 * 60 here would become 5,400 minutes.
+COMMAND_TIMEOUT_MINUTES = 90
 
 class ExecutionResult(TypedDict):
     instance_id: str
@@ -34,6 +36,18 @@ def compare(execution_res: ExecutionResult) -> ValidationResult:
         "FAIL_TO_PASS": list(post_pass-pre_pass)
     }
 
+def apply_required_patch(
+                    container: SetupRuntime,
+                    patch: str,
+                    patch_kind: str,
+                    instance_id: str,
+                    ) -> None:
+    if container.apply_patch(patch, verbose=True):
+        return
+    container.cleanup()
+    raise RuntimeError(f"{patch_kind} patch did not apply cleanly for {instance_id}")
+
+
 def validate_instance(  
                     instance_id: str,
                     image: str, 
@@ -46,8 +60,10 @@ def validate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> ValidationResult:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-    container.apply_patch(test_patch, verbose=True)
+    container: SetupRuntime = SetupRuntime.from_launch_image(
+        image, instance_id, platform, command_timeout=COMMAND_TIMEOUT_MINUTES
+    )
+    apply_required_patch(container, test_patch, "Benchmark test", instance_id)
     # Remember to rebuild after modifications to source codes !!!
     container.send_command(rebuild_cmd)
     container.send_command(test_cmd)
@@ -63,9 +79,11 @@ def validate_instance(
     post_patch_log_accumulate: str = ""
     # 3 validation for stable states
     for check in range(3):
-        container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-        container.apply_patch(test_patch, verbose=True)
-        container.apply_patch(solution_patch, verbose=True)
+        container: SetupRuntime = SetupRuntime.from_launch_image(
+            image, instance_id, platform, command_timeout=COMMAND_TIMEOUT_MINUTES
+        )
+        apply_required_patch(container, test_patch, "Benchmark test", instance_id)
+        apply_required_patch(container, solution_patch, "Reference solution", instance_id)
         container.send_command(rebuild_cmd)
         container.send_command(test_cmd)
         post_patch_log: str = container.send_command(print_cmd).output
