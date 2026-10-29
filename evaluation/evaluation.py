@@ -14,6 +14,59 @@ from enum import Enum
 TIMEOUT = 150*60
 
 
+class EvaluationInfrastructureError(RuntimeError):
+    """The evaluator could not establish a trustworthy task checkout."""
+
+    def __init__(self, failure_class: str, detail: str):
+        self.failure_class = failure_class
+        self.detail = detail
+        super().__init__(f"{failure_class}: {detail}")
+
+
+def _assert_clean_baseline(container: SetupRuntime, platform: Literal["windows", "linux"], instance_id: str) -> None:
+    """Reject image checkouts that already contain tracked baseline changes.
+
+    A dirty official image can make a candidate patch fail to apply or can make
+    a later test failure look like a candidate regression. This is an evaluator
+    infrastructure condition, not a task verdict.
+    """
+    if platform == "linux":
+        command = (
+            "cd /testbed; root=/testbed; "
+            "if [ ! -d .git ]; then "
+            "g=$(find . -maxdepth 2 -mindepth 2 -type d -name .git -print -quit); "
+            "[ -n \"$g\" ] && root=\"${g%/.git}\"; fi; "
+            "cd \"$root\"; git status --porcelain --untracked-files=no"
+        )
+    else:
+        command = (
+            r"$root='C:\testbed'; "
+            r"if (-not (Test-Path (Join-Path $root '.git'))) { "
+            r"$g = Get-ChildItem -Path $root -Directory -Recurse -Depth 2 -Force "
+            r"-ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '.git' } "
+            r"| Select-Object -First 1; if ($g) { $root = $g.Parent.FullName } }; "
+            r"Set-Location $root; git status --porcelain --untracked-files=no"
+        )
+    result = container.send_command(command)
+    output = (result.output or "").strip()
+    if int(getattr(getattr(result, "metadata", None), "exit_code", 1)) != 0:
+        try:
+            container.cleanup()
+        finally:
+            raise EvaluationInfrastructureError(
+                "baseline_status_unavailable",
+                f"{instance_id}: could not inspect the official image checkout",
+            )
+    if output:
+        try:
+            container.cleanup()
+        finally:
+            raise EvaluationInfrastructureError(
+                "dirty_official_image_baseline",
+                f"{instance_id}: tracked baseline changes before patch application: {output}",
+            )
+
+
 def normalize_month(month: str) -> str:
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError(f"Invalid month format: {month}. Expected YYYY-MM.")
@@ -112,6 +165,7 @@ def evaluate_instance(
                     output_dir: str,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+    _assert_clean_baseline(container, platform, instance_id)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
@@ -159,18 +213,31 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
-            instance["instance_id"],
-            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
-            instance["test_patch"],
-            instance["pred_patch"],
-            instance.get("log_parser", instance.get("parser", "")),
-            platform,
-            instance_output_dir
-    )
+    try:
+        res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+                instance["instance_id"],
+                instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["pred_patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir
+        )
+    except EvaluationInfrastructureError as exc:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "not_evaluated",
+            "failure_class": exc.failure_class,
+            "error": exc.detail,
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Infrastructure error...", instance["instance_id"], exc.failure_class, flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
@@ -222,6 +289,7 @@ def run_instances(instances: list[dict[str, str]],
         "failure_ids": [],
         "error_ids": [],
         "incomplete_ids": [],
+        "infrastructure_error_ids": [],
     }
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
@@ -235,7 +303,9 @@ def run_instances(instances: list[dict[str, str]],
             instance = future_to_instance[future]
             try:
                 result = future.result()
-                if result["resolved"] is None:
+                if result.get("grading_status") == "not_evaluated":
+                    results["infrastructure_error_ids"].append(instance["instance_id"])
+                elif result["resolved"] is None:
                     results["incomplete_ids"].append(instance["instance_id"])
                 elif result["resolved"]:
                     results["success_ids"].append(instance["instance_id"])
@@ -248,6 +318,7 @@ def run_instances(instances: list[dict[str, str]],
     results["failure"] = len(results["failure_ids"])
     results["error"] = len(results["error_ids"])
     results["incomplete"] = len(results["incomplete_ids"])
+    results["infrastructure_error"] = len(results["infrastructure_error_ids"])
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent = True)
@@ -324,6 +395,7 @@ def main(
     print("Empty:", results["empty_patch"])
     print("Error:", results["error"])
     print("Incomplete:", results["incomplete"])
+    print("Infrastructure error:", results["infrastructure_error"])
     if results["incomplete_ids"]:
         print("Incomplete IDs:", ", ".join(results["incomplete_ids"]))
     print("Evaluation ended successfully.")
