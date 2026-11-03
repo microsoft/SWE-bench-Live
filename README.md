@@ -44,9 +44,6 @@ SWE-bench-Live is the **first automatically-updating, multi-language and multi-o
 pip install -e .
 ```
 
-> [!NOTE]
-> Though this eval script has ensured backward compatibility with SWE-bench-Live/SWE-bench-Live (Python-only, the NIPS paper version), which uses swebench library for evaluation, if you want to evaluate on SWE-bench-Live/SWE-bench-Live (Python), for fair comparison we still recommend you to go to our old [Python-only branch](https://github.com/microsoft/SWE-bench-Live/blob/python-only/README.md) and follow the old evaluation method. The below eval script is more suitable for our new datasets SWE-bench-Live/MultiLang and SWE-bench-Live/Windows.
-
 Test your installation by running:
 ```bash
 python -m evaluation.evaluation \
@@ -61,17 +58,18 @@ python -m evaluation.evaluation \
 
 ## 🚥 Evaluation
 
-> [!NOTE]
-> Several users have raised questions about the evaluation protocol, so we would like to clarify that SWE-bench-Live evaluation strictly follows the original [`SWE-bench`](https://github.com/swe-bench/SWE-bench) protocol:
->
-> 1. During a rollout, the agent may access only the `problem_statement` field of the Hugging Face dataset and the docker image of the task instance. It must not access any other fields, such as `hint`, `FAIL_TO_PASS`, or `test_patch`. The `test_patch` must not be applied to the repository before or during the rollout. The agent must perform a single rollout based solely on the `problem_statement` on the docker container started from the image of the task instance.
-> 2. Prompts, skills, and workflow instructions provided to the agent must not contain solutions specific to any task instance. They may contain only general instructions for the entire benchmark or, at most, for a specific repository. The agent must not use results from the ground-truth evaluation script to refine its solution.
->
-> Compliant prompts should follow the [SWE-agent prompt](https://github.com/SWE-agent/SWE-agent/blob/a1193dd8fd84eb3e2cd6b0ecbd0bed1cdbb84993/config/default.yaml) and the [OpenHands prompt](https://github.com/OpenHands/benchmarks/blob/701700e6cad1f6309f456213a974544644bda0f4/benchmarks/swtbench/prompts/default.j2), which contain only the problem statement and general workflow instructions.
->
-> When submitting results to our [submissions repository](https://github.com/SWE-bench-Live/submission), you must include your agent's raw rollout trajectories so that the maintainers can verify compliance with the SWE-bench protocol. A trajectory consists of the complete sequence of inputs to and outputs from your agent across all rollout rounds for a given task instance, including the initial prompt provided to the agent. Please follow this [SWE-agent compliant trajectory example](https://github.com/SWE-bench-Live/submission/blob/main/submissions/multilang/all_languages/sweagent/gpt-5.5-medium/oxc-project__oxc-21092/trajectory.txt) when submitting your result. If your organization's policies prohibit sharing the complete set of trajectories, you must provide at least some representative samples for verification. There is a checklist when submitting a PR to help you check whether you meet the protocol requirements again.
+### Evaluation Protocol
+SWE-bench-Live evaluation strictly follows the original [`SWE-bench`](https://github.com/swe-bench/SWE-bench) protocol:
 
-Guide on running your model/agent on SWE-bench-Live: GO TO [evaluation/README.md](./evaluation/README.md)
+1. During a rollout, the agent may access only the `problem_statement` field of the Hugging Face dataset and the docker image of the task instance. It must not access any other fields, such as `hint`, `FAIL_TO_PASS`, or `test_patch`. The `test_patch` must not be applied to the repository before or during the rollout. The agent must perform a single rollout based solely on the `problem_statement` on the docker container started from the image of the task instance.
+2. Prompts, skills, and workflow instructions provided to the agent must not contain solutions specific to any task instance. They may contain only general instructions for the entire benchmark or, at most, for a specific repository. The agent must not use results from the ground-truth evaluation script to refine its solution. The agent must not access future commits and PRs published after the target issue to be resolved, and must not access oracle solution & test patches by git operations or searching on the target GitHub repo / Huggingface benchmark dataset on the Internet.
+
+Compliant prompts should follow the [SWE-agent prompt](https://github.com/SWE-agent/SWE-agent/blob/a1193dd8fd84eb3e2cd6b0ecbd0bed1cdbb84993/config/default.yaml) and the [OpenHands prompt](https://github.com/OpenHands/benchmarks/blob/701700e6cad1f6309f456213a974544644bda0f4/benchmarks/swtbench/prompts/default.j2), which contain only the problem statement and general workflow instructions.
+
+When submitting results to our [submissions repository](https://github.com/SWE-bench-Live/submission), you must include your agent's raw rollout trajectories so that the maintainers can verify compliance with the SWE-bench protocol. A trajectory consists of the complete sequence of inputs to and outputs from your agent across all rollout rounds for a given task instance, including the initial prompt provided to the agent. Please follow this [SWE-agent compliant trajectory example](https://github.com/SWE-bench-Live/submission/blob/main/submissions/multilang/all_languages/sweagent/gpt-5.5-medium/oxc-project__oxc-21092/trajectory.txt) when submitting your result. If your organization's policies prohibit sharing the complete set of trajectories, you must provide **at least 10** representative samples for verification. There is a checklist when submitting a PR to help you check whether you meet the protocol requirements again.
+
+### Guide on running your model/agent on SWE-bench-Live
+Please refer to [evaluation/README.md](./evaluation/README.md)
 
 ## ⬆️ Submit your results
 
