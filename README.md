@@ -39,9 +39,17 @@ SWE-bench-Live is the **first automatically-updating, multi-language and multi-o
 
 ## 🚀 Set Up
 
+### Pre-installation
+Prepare:
+- Git
+- Python=3.12
+- Docker
+
+### Dependency Installation
 ```bash
-# Python >= 3.10
-pip install -e .
+git clone https://github.com/microsoft/SWE-bench-Live --recursive
+cd SWE-bench-Live
+pip install -e . ./launch/
 ```
 
 Test your installation by running:
