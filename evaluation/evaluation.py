@@ -14,6 +14,48 @@ from enum import Enum
 TIMEOUT = 150*60
 
 
+class EvaluationInfrastructureError(RuntimeError):
+    """The evaluator could not establish a trustworthy task checkout."""
+
+    def __init__(
+        self,
+        failure_class: str,
+        detail: str,
+        *,
+        failure_phase: str | None = None,
+        patch_transport: dict[str, object] | None = None,
+    ):
+        self.failure_class = failure_class
+        self.detail = detail
+        self.failure_phase = failure_phase or failure_class
+        self.patch_transport = patch_transport
+        super().__init__(f"{failure_class}: {detail}")
+
+
+def normalize_patch_transport(
+    patch: str,
+    *,
+    patch_kind: str,
+    instance_id: str,
+) -> tuple[str, dict[str, object]]:
+    """Canonicalize Windows CRLF patch transport without changing patch content."""
+    carriage_returns = patch.count("\r")
+    if carriage_returns == 0:
+        return patch, {"line_ending": "lf_or_none", "normalized": False}
+    crlf_count = patch.count("\r\n")
+    if crlf_count != carriage_returns:
+        raise EvaluationInfrastructureError(
+            "ambiguous_patch_line_endings",
+            f"{patch_kind} patch for {instance_id} contains bare or mixed carriage returns; refusing to rewrite it",
+            failure_phase=f"{patch_kind}_patch_transport_validation",
+        )
+    return patch.replace("\r\n", "\n"), {
+        "line_ending": "crlf",
+        "normalized": True,
+        "carriage_return_count": carriage_returns,
+    }
+
+
 def normalize_month(month: str) -> str:
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError(f"Invalid month format: {month}. Expected YYYY-MM.")
@@ -72,6 +114,71 @@ def default_pytest_parser(log: str) -> dict[str, str]:
             mapping[test] = 'fail'
     return mapping
 
+
+def _require_patch_application(
+    container: SetupRuntime,
+    patch: str,
+    *,
+    instance_id: str,
+    patch_kind: str,
+    failure_phase: str,
+    verbose: bool = False,
+) -> None:
+    """Apply a required patch or classify the task as not evaluated."""
+    try:
+        normalized_patch, patch_transport = normalize_patch_transport(
+            patch, patch_kind=patch_kind, instance_id=instance_id
+        )
+    except EvaluationInfrastructureError:
+        try:
+            container.cleanup()
+        except Exception:
+            pass
+        raise
+    if container.apply_patch(normalized_patch, verbose=verbose):
+        return
+    try:
+        container.cleanup()
+    except Exception:
+        # Keep the patch failure as the actionable error if cleanup also fails.
+        pass
+    raise EvaluationInfrastructureError(
+        "required_patch_application_failed",
+        f"{patch_kind} patch failed to apply for {instance_id}; refusing to run build, test, or result commands.",
+        failure_phase=failure_phase,
+        patch_transport=patch_transport,
+    )
+
+
+def _require_image_base_commit(
+    container: SetupRuntime,
+    base_commit: str | None,
+    *,
+    instance_id: str,
+) -> None:
+    """Require the launch image checkout to match the dataset patch base."""
+    expected = str(base_commit or "").strip()
+    if not expected:
+        return
+    result = container.send_command("git rev-parse HEAD")
+    exit_code = int(getattr(getattr(result, "metadata", None), "exit_code", 1))
+    output = str(getattr(result, "output", "") or "").strip()
+    observed = output.splitlines()[-1].strip() if output else ""
+    if exit_code == 0 and observed == expected:
+        return
+    try:
+        container.cleanup()
+    except Exception:
+        pass
+    observed_display = observed or "<unavailable>"
+    raise EvaluationInfrastructureError(
+        "image_base_commit_mismatch",
+        f"official image HEAD {observed_display!r} does not match dataset base_commit "
+        f"{expected!r} for {instance_id}; refusing to apply patches or run commands.",
+        failure_phase="image_base_commit_validation",
+    )
+
+
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
         med = "x86_64"
@@ -110,10 +217,25 @@ def evaluate_instance(
                     parser: str,
                     platform: Literal["windows", "linux"],
                     output_dir: str,
+                    base_commit: str | None = None,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-    container.apply_patch(test_patch)
-    container.apply_patch(solution_patch, verbose=True)
+    _require_image_base_commit(container, base_commit, instance_id=instance_id)
+    _require_patch_application(
+        container,
+        test_patch,
+        instance_id=instance_id,
+        patch_kind="test",
+        failure_phase="test_patch_from_image_base",
+    )
+    _require_patch_application(
+        container,
+        solution_patch,
+        instance_id=instance_id,
+        patch_kind="solution",
+        failure_phase="candidate_patch_after_test_patch",
+        verbose=True,
+    )
     # Remember to rebuild after modifications to source codes !!!
     if rebuild_cmd.strip():
         container.send_command(rebuild_cmd)
@@ -159,18 +281,36 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
-            instance["instance_id"],
-            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
-            instance["test_patch"],
-            instance["pred_patch"],
-            instance.get("log_parser", instance.get("parser", "")),
-            platform,
-            instance_output_dir
-    )
+    try:
+        res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+                instance["instance_id"],
+                instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["pred_patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir,
+                base_commit=instance.get("base_commit"),
+        )
+    except EvaluationInfrastructureError as exc:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "not_evaluated",
+            "failure_class": exc.failure_class,
+            "failure_phase": exc.failure_phase,
+            "patch_application_order": ["test_patch", "candidate_patch"],
+            "error": exc.detail,
+        }
+        if exc.patch_transport is not None:
+            report["patch_transport"] = exc.patch_transport
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Infrastructure error...", instance["instance_id"], exc.failure_class, flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
@@ -222,6 +362,7 @@ def run_instances(instances: list[dict[str, str]],
         "failure_ids": [],
         "error_ids": [],
         "incomplete_ids": [],
+        "infrastructure_error_ids": [],
     }
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
@@ -235,7 +376,9 @@ def run_instances(instances: list[dict[str, str]],
             instance = future_to_instance[future]
             try:
                 result = future.result()
-                if result["resolved"] is None:
+                if result.get("grading_status") == "not_evaluated":
+                    results["infrastructure_error_ids"].append(instance["instance_id"])
+                elif result["resolved"] is None:
                     results["incomplete_ids"].append(instance["instance_id"])
                 elif result["resolved"]:
                     results["success_ids"].append(instance["instance_id"])
@@ -248,6 +391,7 @@ def run_instances(instances: list[dict[str, str]],
     results["failure"] = len(results["failure_ids"])
     results["error"] = len(results["error_ids"])
     results["incomplete"] = len(results["incomplete_ids"])
+    results["infrastructure_error"] = len(results["infrastructure_error_ids"])
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent = True)
