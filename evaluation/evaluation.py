@@ -1,4 +1,7 @@
 import sys, os
+import hashlib
+import subprocess
+import tempfile
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
@@ -12,6 +15,59 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
 TIMEOUT = 150*60
+
+
+def validate_solution_patch_format(solution_patch: str) -> dict | None:
+    """Reject malformed local candidate artifacts before starting a container.
+
+    This is host-side patch syntax validation only. It does not establish task
+    applicability and never assigns a benchmark score. A file-backed Git call
+    deliberately preserves strict end-of-file parsing.
+    """
+    raw = str(solution_patch or "").encode("utf-8")
+    evidence = {
+        "validator": "git apply --stat --no-summary",
+        "candidate_sha256": hashlib.sha256(raw).hexdigest(),
+        "candidate_bytes": len(raw),
+        "terminal_newline": raw.endswith(b"\n"),
+    }
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".patch", delete=False) as handle:
+            handle.write(raw)
+            temporary_path = handle.name
+        completed = subprocess.run(
+            ["git", "apply", "--stat", "--no-summary", temporary_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {**evidence, "reasons": ["candidate_patch_preflight_unavailable"], "error": str(exc)}
+    finally:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+    reasons = []
+    if not raw.endswith(b"\n"):
+        reasons.append("missing_terminal_newline")
+    if completed.returncode != 0:
+        reasons.append("git_apply_stat_rejected_patch")
+    if not reasons:
+        return None
+    return {
+        **evidence,
+        "exit_code": completed.returncode,
+        "reasons": reasons,
+        "stdout": completed.stdout[-4000:],
+        "stderr": completed.stderr[-4000:],
+    }
 
 
 def normalize_month(month: str) -> str:
@@ -159,6 +215,19 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
+    patch_preflight = validate_solution_patch_format(instance["pred_patch"])
+    if patch_preflight is not None:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "not_evaluated",
+            "failure_class": "local_candidate_patch_preflight_failed",
+            "candidate_patch_preflight": patch_preflight,
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Invalid candidate artifact...", instance["instance_id"], flush=True)
+        return report
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
