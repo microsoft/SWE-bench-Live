@@ -136,6 +136,11 @@ def evaluate_instance(
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
 
+def normalize_test_identifier(test_name: str) -> str:
+    """Remove Jest's runtime-only duration suffix from a parsed test name."""
+    return re.sub(r" \(\d+ ms\)$", "", test_name)
+
+
 def run_instance(
                     instance: dict,
                     platform: Literal["windows","linux"],
@@ -171,22 +176,24 @@ def run_instance(
             platform,
             instance_output_dir
     )
-    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
-    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
+    suc = {normalize_test_identifier(test) for test, status in res.items() if 'pass' in status.lower()}
+    fail = {normalize_test_identifier(test) for test, status in res.items() if 'fail' in status.lower()}
+    pass_to_pass = {normalize_test_identifier(test) for test in instance["PASS_TO_PASS"]}
+    fail_to_pass = {normalize_test_identifier(test) for test in instance["FAIL_TO_PASS"]}
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
         "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
+            "success": list(suc & pass_to_pass),
+            "failure": list(fail & pass_to_pass),
         }, 
         "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
+            "success": list(suc & fail_to_pass),
+            "failure": list(fail & fail_to_pass),
         },
     }
-    f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
-        or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
+    f2p = fail_to_pass.issubset(set(report["FAIL_TO_PASS"]["success"])) \
+        or (len(report["FAIL_TO_PASS"]["success"]) == len(fail_to_pass))
     if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
