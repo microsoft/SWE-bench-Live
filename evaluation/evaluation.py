@@ -6,6 +6,7 @@ import json
 import argparse
 import traceback
 import re
+import shlex
 from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -117,13 +118,31 @@ def evaluate_instance(
     # Remember to rebuild after modifications to source codes !!!
     if rebuild_cmd.strip():
         container.send_command(rebuild_cmd)
+    # RepoLaunch exposes a task-specific faketime environment only when an
+    # evaluator explicitly requested a deterministic snapshot clock. Keep patch
+    # application and rebuilds on real filesystem time, then scope faketime to
+    # the test and log-collection commands.
     if not print_cmd.strip():
         # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
         container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
         test_cmd = "bash run_test.sh > testlog.out 2>&1"
         print_cmd = "cat testlog.out"
-    container.send_command(test_cmd)
-    post_patch_log: str = container.send_command(print_cmd).output
+
+    def run_test_command(command: str):
+        if platform != "linux":
+            return container.send_command(command)
+        # RepoLaunch defines this shell function only for an explicitly requested
+        # evaluation clock. Do not replace the function with a fallback: that
+        # would disable faketime in the very runs that requested it.
+        shell_command = shlex.quote(command)
+        return container.send_command(
+            "if declare -F swe_bench_live_with_clock >/dev/null; then "
+            f"swe_bench_live_with_clock bash -lc {shell_command}; "
+            f"else bash -lc {shell_command}; fi"
+        )
+
+    run_test_command(test_cmd)
+    post_patch_log: str = run_test_command(print_cmd).output
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
     if parser.lower().strip() == "pytest":
@@ -135,6 +154,11 @@ def evaluate_instance(
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
+
+def normalize_test_identifier(test_name: str) -> str:
+    """Remove Jest's runtime-only duration suffix from a parsed test name."""
+    return re.sub(r" \(\d+ ms\)$", "", test_name)
+
 
 def run_instance(
                     instance: dict,
@@ -171,22 +195,24 @@ def run_instance(
             platform,
             instance_output_dir
     )
-    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
-    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
+    suc = {normalize_test_identifier(test) for test, status in res.items() if 'pass' in status.lower()}
+    fail = {normalize_test_identifier(test) for test, status in res.items() if 'fail' in status.lower()}
+    pass_to_pass = {normalize_test_identifier(test) for test in instance["PASS_TO_PASS"]}
+    fail_to_pass = {normalize_test_identifier(test) for test in instance["FAIL_TO_PASS"]}
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
         "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
+            "success": list(suc & pass_to_pass),
+            "failure": list(fail & pass_to_pass),
         }, 
         "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
+            "success": list(suc & fail_to_pass),
+            "failure": list(fail & fail_to_pass),
         },
     }
-    f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
-        or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
+    f2p = fail_to_pass.issubset(set(report["FAIL_TO_PASS"]["success"])) \
+        or (len(report["FAIL_TO_PASS"]["success"]) == len(fail_to_pass))
     if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
