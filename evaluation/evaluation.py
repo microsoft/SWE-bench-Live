@@ -10,8 +10,59 @@ from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+import hashlib
+from pathlib import Path
 
 TIMEOUT = 150*60
+
+
+class EvaluationInfrastructureError(RuntimeError):
+    """The evaluator could not obtain a trustworthy test result."""
+
+
+def _command_observation(result) -> dict:
+    output = result.output or ""
+    return {
+        "exit_code": int(result.metadata.exit_code),
+        "output_chars": len(output),
+        "output_sha256": hashlib.sha256(output.encode("utf-8", errors="replace")).hexdigest(),
+    }
+
+
+def _write_json(path: str, value: dict) -> None:
+    Path(path).write_text(json.dumps(value, indent=2), encoding="utf-8")
+
+
+def _normalize_windows_command(container, command: str, phase: str, command_status: dict) -> str:
+    """Repair stale absolute repo paths from older Windows task metadata.
+
+    Older Windows records can contain a Set-Location into the historical
+    C:\\go\\src\\... checkout.  Current launch images use C:\\testbed.  Only
+    rewrite a location after probing that it is absent; valid task-specific
+    paths are left untouched and the effective command is recorded.
+    """
+    if not command.strip():
+        return command
+    location_re = re.compile(
+        r"(?i)(Set-Location(?:\s+-LiteralPath)?\s+['\"]?)([A-Za-z]:\\[^;'\"]+)(['\"]?)"
+    )
+    effective = command
+    rewrites = []
+    for match in location_re.finditer(command):
+        location = match.group(2).rstrip()
+        probe = container.send_command(
+            "Test-Path -LiteralPath '" + location.replace("'", "''") + "'"
+        )
+        if int(probe.metadata.exit_code) != 0:
+            raise EvaluationInfrastructureError(
+                f"{phase}: cannot probe command working directory {location!r}"
+            )
+        if probe.output.strip().lower() == "false":
+            fallback = r"C:\testbed"
+            effective = effective.replace(location, fallback)
+            rewrites.append({"from": location, "to": fallback})
+    command_status.setdefault("command_rewrites", {})[phase] = rewrites
+    return effective
 
 
 def normalize_month(month: str) -> str:
@@ -111,30 +162,100 @@ def evaluate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-    container.apply_patch(test_patch)
-    container.apply_patch(solution_patch, verbose=True)
-    # Remember to rebuild after modifications to source codes !!!
-    if rebuild_cmd.strip():
-        container.send_command(rebuild_cmd)
-    if not print_cmd.strip():
-        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
-        container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
-        test_cmd = "bash run_test.sh > testlog.out 2>&1"
-        print_cmd = "cat testlog.out"
-    container.send_command(test_cmd)
-    post_patch_log: str = container.send_command(print_cmd).output
-    with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
-        f.write(post_patch_log)
-    if parser.lower().strip() == "pytest":
-        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
-        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
-    else:
-        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
-    container.cleanup()
-    with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
-        json.dump(post_patch_status, f, indent = True)
-    return post_patch_status
+    os.makedirs(output_dir, exist_ok=True)
+    container: SetupRuntime | None = None
+    command_status: dict = {
+        "instance_id": instance_id,
+        "platform": platform,
+        "image": image,
+        "commands": {},
+        "patches": {},
+    }
+
+    def fail_infrastructure(phase: str, message: str) -> None:
+        command_status["error"] = {"phase": phase, "message": message}
+        _write_json(os.path.join(output_dir, "evaluator_error.json"), command_status)
+        raise EvaluationInfrastructureError(f"{instance_id} {phase}: {message}")
+
+    try:
+        container = SetupRuntime.from_launch_image(
+            image, instance_id, platform, command_timeout=TIMEOUT
+        )
+
+        test_applied = bool(container.apply_patch(test_patch, verbose=True))
+        command_status["patches"]["test_patch"] = {"applied": test_applied}
+        if not test_applied:
+            fail_infrastructure("test_patch", "test patch did not apply")
+
+        solution_applied = bool(container.apply_patch(solution_patch, verbose=True))
+        command_status["patches"]["solution_patch"] = {"applied": solution_applied}
+        if not solution_applied:
+            fail_infrastructure("solution_patch", "solution patch did not apply")
+
+        if platform == "windows":
+            rebuild_cmd = _normalize_windows_command(
+                container, rebuild_cmd, "rebuild", command_status
+            )
+            test_cmd = _normalize_windows_command(
+                container, test_cmd, "test", command_status
+            )
+
+        # Remember to rebuild after modifications to source codes.  A non-zero
+        # rebuild is retained as evidence; it may be a genuine candidate build
+        # failure, so it must not be relabeled as an infrastructure error here.
+        if rebuild_cmd.strip():
+            rebuild_result = container.send_command(rebuild_cmd)
+            command_status["commands"]["rebuild"] = _command_observation(rebuild_result)
+
+        if not print_cmd.strip():
+            # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+            setup_result = container.send_command(
+                f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n"
+            )
+            command_status["commands"]["test_script_setup"] = _command_observation(setup_result)
+            test_cmd = "bash run_test.sh > testlog.out 2>&1"
+            print_cmd = "cat testlog.out"
+
+        test_result = container.send_command(test_cmd)
+        command_status["commands"]["test"] = _command_observation(test_result)
+        if int(test_result.metadata.exit_code) != 0:
+            command_status["test_command_failed"] = True
+        print_result = container.send_command(print_cmd)
+        command_status["commands"]["print"] = _command_observation(print_result)
+        post_patch_log: str = print_result.output or ""
+        with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
+            f.write(post_patch_log)
+
+        # A successful print command with no captured report is not a test
+        # result.  Keep it out of the benchmark failure bucket so capture or
+        # runtime problems can be fixed and rerun independently.
+        if int(print_result.metadata.exit_code) != 0:
+            fail_infrastructure("print", "report-print command failed")
+        if not post_patch_log.strip():
+            fail_infrastructure("capture", "report capture is empty")
+
+        _write_json(os.path.join(output_dir, "command_status.json"), command_status)
+        if parser.lower().strip() == "pytest":
+            # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+            post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
+        else:
+            post_patch_status = run_parser(parser, post_patch_log)
+
+        # A failed test command can have partial JSON output.  Preserve explicit
+        # skips, but never allow partial passes to resolve the instance.
+        if int(test_result.metadata.exit_code) != 0:
+            post_patch_status = {
+                name: ("skip" if status == "skip" else "fail")
+                for name, status in post_patch_status.items()
+            }
+        with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
+            json.dump(post_patch_status, f, indent=2)
+        return post_patch_status
+    except EvaluationInfrastructureError:
+        raise
+    finally:
+        if container is not None:
+            container.cleanup()
 
 def run_instance(
                     instance: dict,
