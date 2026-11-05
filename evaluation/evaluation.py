@@ -6,12 +6,188 @@ import json
 import argparse
 import traceback
 import re
-from typing import Literal, TypedDict
+import xml.etree.ElementTree as ET
+from typing import Iterable, Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
 TIMEOUT = 150*60
+
+
+_DOTNET_TEST_COMMAND = re.compile(r"\bdotnet(?:\.exe)?\s+test\b", re.IGNORECASE)
+_DOTNET_TRX_EXPECTED_MINIMUM = 20
+_DOTNET_TRX_F2P_MINIMUM = 3
+_DOTNET_TRX_ONE_EDIT_MINIMUM = 3
+_DOTNET_TRX_ONE_EDIT_RATIO = 0.20
+_DOTNET_TRX_F2P_MAX_DISTANCE = 3
+
+
+def _trx_status(outcome: object) -> str:
+    value = str(outcome or "").strip().lower()
+    if value in {"passed", "pass", "success", "succeeded", "ok"}:
+        return "pass"
+    if value in {"skipped", "notexecuted", "not executed", "inconclusive", "ignored", "disabled"}:
+        return "skip"
+    return "fail"
+
+
+def parse_windows_dotnet_trx_status(log: str) -> tuple[dict[str, str], dict | None]:
+    """Read exact parameterized identities from a completed TRX capture.
+
+    This is evidence extraction only. It deliberately preserves every
+    UnitTestResult ``testName`` and does not translate the value to a published
+    benchmark name.
+    """
+    text = str(log or "")
+    start = text.rfind("<?xml")
+    if start < 0:
+        return {}, None
+    end = text.find("</TestRun>", start)
+    if end < 0:
+        return {}, None
+    try:
+        root = ET.fromstring(text[start:end + len("</TestRun>")])
+    except ET.ParseError:
+        return {}, None
+    if not str(root.tag).lower().endswith("testrun"):
+        return {}, None
+    summary = root.find(".//{*}ResultSummary")
+    if summary is None or str(summary.attrib.get("outcome", "")).strip().lower() != "completed":
+        return {}, None
+    counters = summary.find(".//{*}Counters")
+    status: dict[str, str] = {}
+    precedence = {"pass": 0, "skip": 1, "fail": 2}
+    for node in root.findall(".//{*}Results/{*}UnitTestResult"):
+        name = str(node.attrib.get("testName", "") or "")
+        if not name:
+            continue
+        outcome = _trx_status(node.attrib.get("outcome", ""))
+        current = status.get(name)
+        if current is None or precedence[outcome] > precedence[current]:
+            status[name] = outcome
+    if not status:
+        return {}, None
+    counter_values: dict[str, int] = {}
+    if counters is not None:
+        for key in ("total", "executed", "passed", "failed", "error", "timeout", "aborted"):
+            try:
+                counter_values[key] = int(counters.attrib.get(key, 0))
+            except (TypeError, ValueError):
+                counter_values[key] = 0
+    return status, {
+        "result_count": len(status),
+        "result_summary_outcome": str(summary.attrib.get("outcome", "")),
+        "counters": counter_values,
+    }
+
+
+def _unique_distance_one_passing_neighbors(expected: Iterable[str], passing: set[str]) -> dict[str, str]:
+    """Return unambiguous literal one-edit passing neighbors as evidence only."""
+    deleted_index: dict[str, set[str]] = {}
+    substitution_index: dict[tuple[int, str], set[str]] = {}
+    for actual in passing:
+        for index in range(len(actual)):
+            deleted = actual[:index] + actual[index + 1:]
+            deleted_index.setdefault(deleted, set()).add(actual)
+            substitution_index.setdefault((index, deleted), set()).add(actual)
+    matches: dict[str, str] = {}
+    for name in expected:
+        if name in passing:
+            continue
+        candidates: set[str] = set(deleted_index.get(name, set()))
+        for index in range(len(name)):
+            shorter = name[:index] + name[index + 1:]
+            if shorter in passing:
+                candidates.add(shorter)
+            candidates.update(substitution_index.get((index, shorter), set()))
+        if len(candidates) == 1:
+            matches[name] = next(iter(candidates))
+    return matches
+
+
+def _bounded_edit_distance(left: str, right: str, maximum: int) -> int:
+    if abs(len(left) - len(right)) > maximum:
+        return maximum + 1
+    previous = list(range(len(right) + 1))
+    for row, left_char in enumerate(left, 1):
+        current = [row]
+        row_minimum = row
+        for column, right_char in enumerate(right, 1):
+            value = min(
+                current[-1] + 1,
+                previous[column] + 1,
+                previous[column - 1] + (left_char != right_char),
+            )
+            current.append(value)
+            row_minimum = min(row_minimum, value)
+        if row_minimum > maximum:
+            return maximum + 1
+        previous = current
+    return previous[-1] if previous[-1] <= maximum else maximum + 1
+
+
+def windows_dotnet_trx_expected_name_corruption(
+    instance: dict,
+    trx_status: dict[str, str],
+    trx_info: dict | None,
+) -> dict | None:
+    """Preserve unavailable rows with systematic TRX/metadata identity drift.
+
+    This is not fuzzy grading: it does not replace expected names or award a
+    candidate pass. It requires a completed Windows ``dotnet test`` TRX report,
+    no exact expected-name observation, a large systematic unique-one-edit
+    passing pattern, and one unique close passing neighbor for every F2P name.
+    """
+    test_command = " ; ".join(instance.get("test_cmds", []) or [])
+    if _DOTNET_TEST_COMMAND.search(test_command) is None or trx_info is None:
+        return None
+    p2p = [str(name) for name in instance.get("PASS_TO_PASS", []) or []]
+    f2p = [str(name) for name in instance.get("FAIL_TO_PASS", []) or []]
+    expected = list(dict.fromkeys(p2p + f2p))
+    if len(expected) < _DOTNET_TRX_EXPECTED_MINIMUM or len(f2p) < _DOTNET_TRX_F2P_MINIMUM:
+        return None
+    if any(name in trx_status for name in expected):
+        return None
+    passing = {name for name, outcome in trx_status.items() if outcome == "pass"}
+    if not passing:
+        return None
+    one_edit = _unique_distance_one_passing_neighbors(expected, passing)
+    if (
+        len(one_edit) < _DOTNET_TRX_ONE_EDIT_MINIMUM
+        or len(one_edit) / len(expected) < _DOTNET_TRX_ONE_EDIT_RATIO
+    ):
+        return None
+    f2p_neighbors: dict[str, dict] = {}
+    for expected_name in f2p:
+        minimum = _DOTNET_TRX_F2P_MAX_DISTANCE + 1
+        nearest: list[str] = []
+        for actual in passing:
+            distance = _bounded_edit_distance(expected_name, actual, _DOTNET_TRX_F2P_MAX_DISTANCE)
+            if distance < minimum:
+                minimum = distance
+                nearest = [actual]
+            elif distance == minimum:
+                nearest.append(actual)
+        if minimum > _DOTNET_TRX_F2P_MAX_DISTANCE or len(nearest) != 1:
+            return None
+        f2p_neighbors[expected_name] = {
+            "observed": nearest[0],
+            "outcome": "pass",
+            "edit_distance": minimum,
+        }
+    return {
+        "expected_test_count": len(expected),
+        "exact_expected_match_count": 0,
+        "completed_trx": trx_info,
+        "unique_distance_one_passing_neighbor_count": len(one_edit),
+        "unique_distance_one_passing_neighbor_ratio": len(one_edit) / len(expected),
+        "unique_distance_one_passing_neighbor_examples": [
+            {"published": name, "observed": one_edit[name]}
+            for name in sorted(one_edit)[:12]
+        ],
+        "affected_fail_to_pass": f2p_neighbors,
+    }
 
 
 def normalize_month(month: str) -> str:
@@ -110,7 +286,7 @@ def evaluate_instance(
                     parser: str,
                     platform: Literal["windows", "linux"],
                     output_dir: str,
-                    ) -> dict[str, Literal['pass', 'fail', 'skip']]:
+                    ) -> tuple[dict[str, Literal['pass', 'fail', 'skip']], dict[str, str], dict | None]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
@@ -131,10 +307,11 @@ def evaluate_instance(
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
     else:
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
+    dotnet_trx_status, dotnet_trx_info = parse_windows_dotnet_trx_status(post_patch_log) if platform == "windows" else ({}, None)
     container.cleanup()
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
-    return post_patch_status
+    return post_patch_status, dotnet_trx_status, dotnet_trx_info
 
 def run_instance(
                     instance: dict,
@@ -159,7 +336,7 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+    res, dotnet_trx_status, dotnet_trx_info = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
             " ; ".join(instance.get("rebuild_cmds", [])),
@@ -171,6 +348,20 @@ def run_instance(
             platform,
             instance_output_dir
     )
+    if platform == "windows":
+        corruption = windows_dotnet_trx_expected_name_corruption(instance, dotnet_trx_status, dotnet_trx_info)
+        if corruption is not None:
+            report = {
+                "instance_id": instance["instance_id"],
+                "resolved": None,
+                "grading_status": "unavailable",
+                "failure_class": "windows_dotnet_trx_expected_name_corruption",
+                "windows_dotnet_trx_expected_name_corruption": corruption,
+            }
+            with open(report_dir, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=True)
+            print("Unavailable...", instance["instance_id"], flush=True)
+            return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
