@@ -2,6 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.windows_go_execution_contract import unexecuted_windows_go_test_patch_targets
 import json
 import argparse
 import traceback
@@ -110,7 +111,7 @@ def evaluate_instance(
                     parser: str,
                     platform: Literal["windows", "linux"],
                     output_dir: str,
-                    ) -> dict[str, Literal['pass', 'fail', 'skip']]:
+                    ) -> tuple[dict[str, Literal['pass', 'fail', 'skip']], list[str]]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
@@ -124,6 +125,11 @@ def evaluate_instance(
         print_cmd = "cat testlog.out"
     container.send_command(test_cmd)
     post_patch_log: str = container.send_command(print_cmd).output
+    unexecuted_targets, touched_targets, observed_roots = unexecuted_windows_go_test_patch_targets(
+        test_patch,
+        post_patch_log,
+        platform,
+    )
     with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(post_patch_log)
     if parser.lower().strip() == "pytest":
@@ -134,7 +140,15 @@ def evaluate_instance(
     container.cleanup()
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
-    return post_patch_status
+    if unexecuted_targets:
+        unavailable = {
+            "touched_go_test_functions": touched_targets,
+            "unexecuted_go_test_functions": unexecuted_targets,
+            "observed_go_test_roots": sorted(observed_roots or ()),
+        }
+        with open(os.path.join(output_dir, "execution_contract.json"), "w", encoding="utf-8") as f:
+            json.dump(unavailable, f, indent=True)
+    return post_patch_status, unexecuted_targets
 
 def run_instance(
                     instance: dict,
@@ -159,7 +173,7 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+    res, unexecuted_targets = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
             " ; ".join(instance.get("rebuild_cmds", [])),
@@ -171,6 +185,23 @@ def run_instance(
             platform,
             instance_output_dir
     )
+    if unexecuted_targets:
+        report = {
+            "instance_id": instance["instance_id"],
+            "resolved": None,
+            "grading_status": "unavailable",
+            "failure_class": "windows_go_test_patch_regression_not_executed",
+            "unexecuted_go_test_functions": unexecuted_targets,
+            "error": (
+                "The published Windows Go test command completed a structured Go stream, "
+                "but executed none of the official test_patch regression functions. "
+                "The row cannot grade a candidate until its command or test contract is revalidated."
+            ),
+        }
+        with open(report_dir, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=True)
+        print("Grading unavailable...", instance["instance_id"], flush=True)
+        return report
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
