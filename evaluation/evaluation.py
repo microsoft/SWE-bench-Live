@@ -1,3 +1,4 @@
+import ast
 import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
@@ -71,6 +72,44 @@ def default_pytest_parser(log: str) -> dict[str, str]:
         else:
             mapping[test] = 'fail'
     return mapping
+
+
+def normalize_test_id_sequence(values: object) -> list[str]:
+    """Return test identifiers from native or serialized dataset sequence fields.
+
+    Dataset exports may preserve a sequence as either a native list or a
+    string representation. Keep an ordinary test identifier as one element
+    rather than iterating over its characters.
+    """
+    if values is None:
+        return []
+    if isinstance(values, (list, tuple)):
+        if not all(isinstance(value, str) for value in values):
+            raise TypeError("Expected test identifiers to be strings")
+        return list(values)
+    if not isinstance(values, str):
+        raise TypeError(
+            "Expected test identifier string, list, tuple, or None; "
+            f"got {type(values).__name__}"
+        )
+
+    stripped = values.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("[") and stripped.endswith("]"):
+        try:
+            decoded = ast.literal_eval(stripped)
+        except (SyntaxError, ValueError):
+            decoded = None
+        if isinstance(decoded, (list, tuple)) and all(isinstance(value, str) for value in decoded):
+            # NumPy-style multiline rendering can omit commas. In that case
+            # Python concatenates adjacent literals, so recover each quoted id.
+            quoted = re.findall(r"'([^']*)'", stripped)
+            if len(decoded) == 1 and len(quoted) > 1:
+                return quoted
+            return list(decoded)
+    return [values]
+
 
 def get_default_image_name(instance_id: str, platform: Literal["windows", "linux"]) -> str:
     if platform == "linux":
@@ -159,6 +198,8 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
+    pass_to_pass = normalize_test_id_sequence(instance.get("PASS_TO_PASS"))
+    fail_to_pass = normalize_test_id_sequence(instance.get("FAIL_TO_PASS"))
     res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
             instance["instance_id"],
             instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
@@ -177,16 +218,16 @@ def run_instance(
         "instance_id": instance["instance_id"],
         "resolved": False,
         "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
+            "success": list(set(suc)&set(pass_to_pass)),
+            "failure": list(set(fail)&set(pass_to_pass)),
         }, 
         "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
+            "success": list(set(suc)&set(fail_to_pass)),
+            "failure": list(set(fail)&set(fail_to_pass)),
         },
     }
-    f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
-        or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
+    f2p = set(fail_to_pass).issubset(set(report["FAIL_TO_PASS"]["success"])) \
+        or (len(report["FAIL_TO_PASS"]["success"]) == len(fail_to_pass))
     if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
