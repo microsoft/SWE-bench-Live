@@ -136,6 +136,50 @@ def evaluate_instance(
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
 
+
+def evaluate_baseline_instance(
+                    instance_id: str,
+                    image: str,
+                    rebuild_cmd: str,
+                    test_cmd: str,
+                    print_cmd: str,
+                    test_patch: str,
+                    parser: str,
+                    platform: Literal["windows", "linux"],
+                    output_dir: str,
+                    ) -> dict[str, Literal['pass', 'fail', 'skip']]:
+    """Run the published test contract without a candidate patch for comparison.
+
+    This is used only after a candidate has passed every FAIL_TO_PASS target but
+    has PASS_TO_PASS failures.  It prevents an already-broken published baseline
+    from being reported as a candidate regression.
+    """
+    container: SetupRuntime = SetupRuntime.from_launch_image(
+        image, instance_id, platform, command_timeout=TIMEOUT
+    )
+    try:
+        container.apply_patch(test_patch)
+        if rebuild_cmd.strip():
+            container.send_command(rebuild_cmd)
+        if not print_cmd.strip():
+            container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
+            test_cmd = "bash run_test.sh > testlog.out 2>&1"
+            print_cmd = "cat testlog.out"
+        container.send_command(test_cmd)
+        baseline_log: str = container.send_command(print_cmd).output
+        with open(os.path.join(output_dir, "baseline_post_patch_log.txt"), "w", encoding="utf-8") as f:
+            f.write(baseline_log)
+        if parser.lower().strip() == "pytest":
+            baseline_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(baseline_log)
+        else:
+            baseline_status = run_parser(parser, baseline_log)
+        with open(os.path.join(output_dir, "baseline_status.json"), "w", encoding="utf-8") as f:
+            json.dump(baseline_status, f, indent=True)
+        return baseline_status
+    finally:
+        container.cleanup()
+
+
 def run_instance(
                     instance: dict,
                     platform: Literal["windows","linux"],
@@ -192,6 +236,34 @@ def run_instance(
         and f2p:
         report["resolved"] = True
         print("Success!", instance["instance_id"], flush=True)
+    elif f2p and report["PASS_TO_PASS"]["failure"]:
+        baseline_status = evaluate_baseline_instance(
+            instance["instance_id"],
+            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+            " ; ".join(instance.get("rebuild_cmds", [])),
+            " ; ".join(instance.get("test_cmds", [])),
+            " ; ".join(instance.get("print_cmds", [])),
+            instance["test_patch"],
+            instance.get("log_parser", instance.get("parser", "")),
+            platform,
+            instance_output_dir,
+        )
+        baseline_failures = {
+            test for test, status in baseline_status.items() if "fail" in status.lower()
+        }
+        candidate_failures = set(report["PASS_TO_PASS"]["failure"])
+        unchanged_baseline_failures = sorted(candidate_failures & baseline_failures)
+        candidate_only_failures = sorted(candidate_failures - baseline_failures)
+        report["baseline_control"] = {
+            "performed": True,
+            "matching_baseline_failures": unchanged_baseline_failures,
+            "candidate_only_failures": candidate_only_failures,
+        }
+        if not candidate_only_failures:
+            report["resolved"] = True
+            print("Success!", instance["instance_id"], "(baseline PASS_TO_PASS failures retained)", flush=True)
+        else:
+            print("Failed...", instance["instance_id"], flush=True)
     else:
         print("Failed...", instance["instance_id"], flush=True)
 
