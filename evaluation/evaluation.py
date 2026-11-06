@@ -136,6 +136,47 @@ def evaluate_instance(
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
 
+
+def evaluate_gold_reference_instance(
+                    instance_id: str,
+                    image: str,
+                    rebuild_cmd: str,
+                    test_cmd: str,
+                    print_cmd: str,
+                    test_patch: str,
+                    gold_patch: str,
+                    parser: str,
+                    platform: Literal["windows", "linux"],
+                    output_dir: str,
+                    ) -> dict[str, Literal['pass', 'fail', 'skip']]:
+    """Replay the published test contract against its gold reference patch."""
+    container: SetupRuntime = SetupRuntime.from_launch_image(
+        image, instance_id, platform, command_timeout=TIMEOUT
+    )
+    try:
+        container.apply_patch(test_patch, verbose=True)
+        container.apply_patch(gold_patch, verbose=True)
+        if rebuild_cmd.strip():
+            container.send_command(rebuild_cmd)
+        if not print_cmd.strip():
+            container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
+            test_cmd = "bash run_test.sh > testlog.out 2>&1"
+            print_cmd = "cat testlog.out"
+        container.send_command(test_cmd)
+        reference_log: str = container.send_command(print_cmd).output
+        with open(os.path.join(output_dir, "gold_reference_post_patch_log.txt"), "w", encoding="utf-8") as f:
+            f.write(reference_log)
+        if parser.lower().strip() == "pytest":
+            reference_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(reference_log)
+        else:
+            reference_status = run_parser(parser, reference_log)
+        with open(os.path.join(output_dir, "gold_reference_status.json"), "w", encoding="utf-8") as f:
+            json.dump(reference_status, f, indent=True)
+        return reference_status
+    finally:
+        container.cleanup()
+
+
 def run_instance(
                     instance: dict,
                     platform: Literal["windows","linux"],
@@ -192,6 +233,34 @@ def run_instance(
         and f2p:
         report["resolved"] = True
         print("Success!", instance["instance_id"], flush=True)
+    elif not f2p:
+        reference_status = evaluate_gold_reference_instance(
+            instance["instance_id"],
+            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+            " ; ".join(instance.get("rebuild_cmds", [])),
+            " ; ".join(instance.get("test_cmds", [])),
+            " ; ".join(instance.get("print_cmds", [])),
+            instance["test_patch"],
+            instance["patch"],
+            instance.get("log_parser", instance.get("parser", "")),
+            platform,
+            instance_output_dir,
+        )
+        candidate_failures = set(report["FAIL_TO_PASS"]["failure"])
+        reference_failures = {
+            test for test, status in reference_status.items() if "fail" in status.lower()
+        }
+        matching_reference_failures = sorted(candidate_failures & reference_failures)
+        candidate_only_failures = sorted(candidate_failures - reference_failures)
+        report["gold_reference_control"] = {
+            "performed": True,
+            "matching_gold_reference_failures": matching_reference_failures,
+            "candidate_only_failures": candidate_only_failures,
+        }
+        if not candidate_only_failures:
+            print("Failed...", instance["instance_id"], "(gold reference also fails target)", flush=True)
+        else:
+            print("Failed...", instance["instance_id"], flush=True)
     else:
         print("Failed...", instance["instance_id"], flush=True)
 
