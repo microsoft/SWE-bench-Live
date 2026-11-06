@@ -18,6 +18,20 @@ class ValidationResult(ExecutionResult):
     PASS_TO_PASS: list[str]
     FAIL_TO_PASS: list[str]
 
+
+def _demote_passes_after_failed_test_command(
+    status: dict[str, Literal['pass', 'fail', 'skip']],
+    exit_code: int,
+) -> dict[str, Literal['pass', 'fail', 'skip']]:
+    """Do not publish partial passes when the prescribed test command failed."""
+    if int(exit_code) == 0:
+        return status
+    return {
+        test: 'fail' if value == 'pass' else value
+        for test, value in status.items()
+    }
+
+
 def compare(execution_res: ExecutionResult) -> ValidationResult:
     pre_pass = set()
     post_pass = set()
@@ -50,11 +64,14 @@ def validate_instance(
     container.apply_patch(test_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
     container.send_command(rebuild_cmd)
-    container.send_command(test_cmd)
+    pre_patch_result = container.send_command(test_cmd)
     pre_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "pre_patch_log.txt"), "w", encoding="utf-8") as f:
         f.write(pre_patch_log)
     pre_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, pre_patch_log)
+    pre_patch_status = _demote_passes_after_failed_test_command(
+        pre_patch_status, pre_patch_result.metadata.exit_code
+    )
     container.cleanup()
     del container
 
@@ -67,10 +84,13 @@ def validate_instance(
         container.apply_patch(test_patch, verbose=True)
         container.apply_patch(solution_patch, verbose=True)
         container.send_command(rebuild_cmd)
-        container.send_command(test_cmd)
+        post_patch_result = container.send_command(test_cmd)
         post_patch_log: str = container.send_command(print_cmd).output
         post_patch_log_accumulate += f"eval No.{check} \n\n========  \n\n{post_patch_log} \n\n"
-        post_patch_status_under_inspect[check] = run_parser(parser, post_patch_log)
+        post_patch_status_under_inspect[check] = _demote_passes_after_failed_test_command(
+            run_parser(parser, post_patch_log),
+            post_patch_result.metadata.exit_code,
+        )
         container.cleanup()
         del container
     all_tests = set(post_patch_status_under_inspect[0].keys()) | set(post_patch_status_under_inspect[1].keys()) | set(post_patch_status_under_inspect[2].keys())
