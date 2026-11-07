@@ -43,6 +43,7 @@ def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
         SKIPPED = "SKIPPED"
         ERROR = "ERROR"
         XFAIL = "XFAIL"
+        XPASS = "XPASS"
     test_status_map = {}
     for line in log.split("\n"):
         if any([line.startswith(x.value) for x in TestStatus]):
@@ -187,7 +188,8 @@ def run_instance(
     }
     f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
         or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
-    if (len(report["PASS_TO_PASS"]["failure"]) == 0) \
+    p2p = set(instance["PASS_TO_PASS"]).issubset(set(res))
+    if p2p and (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
         report["resolved"] = True
