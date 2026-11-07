@@ -43,6 +43,7 @@ def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
         SKIPPED = "SKIPPED"
         ERROR = "ERROR"
         XFAIL = "XFAIL"
+        XPASS = "XPASS"
     test_status_map = {}
     for line in log.split("\n"):
         if any([line.startswith(x.value) for x in TestStatus]):

@@ -1,6 +1,7 @@
 """Regression tests for PASS_TO_PASS coverage (issue #102)."""
 import ast
 import json
+from enum import Enum
 import os
 import unittest
 from pathlib import Path
@@ -17,10 +18,10 @@ class TestP2PCoverage(unittest.TestCase):
         funcs = [
             n for n in tree.body
             if isinstance(n, ast.FunctionDef)
-            and n.name == "run_instance"
+            and n.name in {"run_instance", "parse_log_pytest", "default_pytest_parser"}
         ]
-        if len(funcs) != 1:
-            raise RuntimeError("Expected exactly one run_instance")
+        if len(funcs) != 3:
+            raise RuntimeError("Expected three evaluation functions")
 
         module = ast.fix_missing_locations(
             ast.Module(body=funcs, type_ignores=[])
@@ -28,6 +29,7 @@ class TestP2PCoverage(unittest.TestCase):
         cls.ns = {
             "os": os,
             "json": json,
+            "Enum": Enum,
             "Literal": Literal,
             "get_default_image_name": lambda *_: "unused",
         }
@@ -73,6 +75,49 @@ class TestP2PCoverage(unittest.TestCase):
                     )
                 self.assertEqual(report, saved)
                 self.assertIs(report["resolved"], expected)
+
+
+    def test_xpass_preserves_p2p_coverage(self):
+        p2p = [
+            "tests/test_dates.py::test_issue_1192_fmt[pytz.timezone]",
+            "tests/test_dates.py::test_issue_1192_fmt[zoneinfo.ZoneInfo]",
+        ]
+        f2p = "tests/test_dates.py::test_issue_1192"
+
+        log = "\n".join(
+            [f"XPASS {name}" for name in p2p]
+            + [f"PASSED {f2p}"]
+        )
+
+        parsed = self.ns["default_pytest_parser"](log)
+
+        for name in p2p:
+            self.assertEqual(parsed.get(name), "pass")
+
+        strict = self.ns["default_pytest_parser"](
+            f"FAILED {p2p[0]} - [XPASS(strict)]"
+        )
+        self.assertEqual(strict[p2p[0]], "fail")
+
+        self.ns["evaluate_instance"] = lambda *_, **__: parsed
+        instance = {
+            "instance_id": "babel_xpass",
+            "docker_image": "unused",
+            "test_patch": "",
+            "pred_patch": "",
+            "FAIL_TO_PASS": [f2p],
+            "PASS_TO_PASS": p2p,
+        }
+
+        with TemporaryDirectory() as tmp:
+            report = self.ns["run_instance"](
+                instance, "linux", tmp, True
+            )
+
+        self.assertTrue(report["resolved"])
+        self.assertEqual(
+            set(report["PASS_TO_PASS"]["success"]), set(p2p)
+        )
 
 
 if __name__ == "__main__":
