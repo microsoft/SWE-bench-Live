@@ -136,6 +136,63 @@ def evaluate_instance(
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
 
+
+def canonicalize_random_go_subtest_identifier(test_name: str) -> tuple[str, bool]:
+    """Canonicalize Moby's runtime-random invalid-tag subtest only.
+
+    ``TestImageTagInvalidSourceImageName`` generates its final 121-letter
+    invalid-tag case at runtime. Its published FAIL_TO_PASS name therefore
+    cannot recur literally in an independent container. Keep all other Go
+    identifiers byte-exact and reconcile this one form only when its group is
+    one-to-one; ambiguous groups remain unmatched.
+    """
+    match = re.fullmatch(
+        r"(TestImageTagInvalidSourceImageName/invalidTag/)([A-Za-z]{121})",
+        test_name,
+    )
+    if match is None:
+        return test_name, False
+    return match.group(1) + "<random-alpha>", True
+
+
+def reconcile_random_go_subtest_statuses(
+    expected_tests: set[str],
+    observed_statuses: dict[str, Literal['pass', 'fail', 'skip']],
+) -> tuple[dict[str, Literal['pass', 'fail', 'skip']], int, int]:
+    """Reconcile only unambiguous runtime-random Go subtest identifiers."""
+    reconciled: dict[str, Literal['pass', 'fail', 'skip']] = {
+        expected: observed_statuses[expected]
+        for expected in expected_tests
+        if expected in observed_statuses
+    }
+
+    expected_groups: dict[str, list[str]] = {}
+    for expected in expected_tests - set(reconciled):
+        canonical, is_random = canonicalize_random_go_subtest_identifier(expected)
+        if is_random:
+            expected_groups.setdefault(canonical, []).append(expected)
+
+    observed_groups: dict[str, list[tuple[str, Literal['pass', 'fail', 'skip']]]] = {}
+    for observed, status in observed_statuses.items():
+        if observed in reconciled:
+            continue
+        canonical, is_random = canonicalize_random_go_subtest_identifier(observed)
+        if is_random:
+            observed_groups.setdefault(canonical, []).append((observed, status))
+
+    random_matches = 0
+    ambiguous_expected = 0
+    for canonical, expected_group in expected_groups.items():
+        observed_group = observed_groups.get(canonical, [])
+        if len(expected_group) != 1 or len(observed_group) != 1:
+            ambiguous_expected += len(expected_group)
+            continue
+        status = observed_group[0][1]
+        reconciled[expected_group[0]] = status
+        random_matches += 1
+    return reconciled, random_matches, ambiguous_expected
+
+
 def run_instance(
                     instance: dict,
                     platform: Literal["windows","linux"],
@@ -171,18 +228,30 @@ def run_instance(
             platform,
             instance_output_dir
     )
-    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
-    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
+    expected_tests = set(instance["PASS_TO_PASS"]) | set(instance["FAIL_TO_PASS"])
+    reconciled, random_identifier_matches, ambiguous_random_expected = (
+        reconcile_random_go_subtest_statuses(expected_tests, res)
+    )
+    suc = [test for test, status in reconciled.items() if status == "pass"]
+    fail = [test for test, status in reconciled.items() if status == "fail"]
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
+        "evaluation_contract": {
+            "valid": bool(expected_tests) and bool(res) and bool(reconciled),
+            "expected_tests": len(expected_tests),
+            "observed_tests": len(res),
+            "matched_expected_tests": len(reconciled),
+            "random_identifier_matches": random_identifier_matches,
+            "ambiguous_random_expected_tests": ambiguous_random_expected,
+        },
         "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
-        }, 
+            "success": list(set(suc) & set(instance["PASS_TO_PASS"])),
+            "failure": list(set(fail) & set(instance["PASS_TO_PASS"])),
+        },
         "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
+            "success": list(set(suc) & set(instance["FAIL_TO_PASS"])),
+            "failure": list(set(fail) & set(instance["FAIL_TO_PASS"])),
         },
     }
     f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
