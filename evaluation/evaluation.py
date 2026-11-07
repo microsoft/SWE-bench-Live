@@ -81,23 +81,31 @@ def get_default_image_name(instance_id: str, platform: Literal["windows", "linux
     image = f"starryzhang/sweb.eval.{med}.{name}"
     return image
 
-def apply_solution_patch_best_effort(solution_patch: str, 
+class GoldReferenceControlUnavailable(RuntimeError):
+    """The published gold reference could not be replayed faithfully."""
+
+
+def apply_solution_patch_best_effort(solution_patch: str,
                                     container: SetupRuntime,
-                                    platform: Literal["windows", "linux"]) -> None:
+                                    platform: Literal["windows", "linux"]) -> bool:
     '''
-    For some 1% corner cases where /testbed/repo_name is the actual project
+    Apply a solution patch from the effective repository root.
+
+    Some images use /testbed/repo_name as the project root.  Callers must check
+    the result: a failed gold-patch application cannot establish that a target
+    failure belongs to the dataset rather than the candidate.
     '''
     if platform == "linux":
         container.send_command("cd /testbed")
         container.send_command("""[ -d .git ] || { g=$(find . -maxdepth 2 -mindepth 2 -type d -name .git -print -quit); [ -n "$g" ] && cd "${g%/.git}"; } ;""")
-        container.apply_patch(solution_patch, verbose=True)
+        applied = container.apply_patch(solution_patch, verbose=True)
         container.send_command("cd /testbed")
     else:
         container.send_command(r"cd C:\testbed")
         container.send_command(r"""if (-not (Test-Path .git)) { $g = Get-ChildItem -Directory -Recurse -Depth 2 -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '.git' } | Select-Object -First 1; if ($g) { Set-Location $g.Parent.FullName } };""")
-        container.apply_patch(solution_patch, verbose=True)
+        applied = container.apply_patch(solution_patch, verbose=True)
         container.send_command(r"cd C:\testbed")
-    return
+    return bool(applied)
 
 def evaluate_instance(  
                     instance_id: str,
@@ -136,6 +144,61 @@ def evaluate_instance(
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
 
+
+def evaluate_gold_reference_instance(
+                    instance_id: str,
+                    image: str,
+                    rebuild_cmd: str,
+                    test_cmd: str,
+                    print_cmd: str,
+                    test_patch: str,
+                    gold_patch: str,
+                    parser: str,
+                    platform: Literal["windows", "linux"],
+                    output_dir: str,
+                    ) -> dict[str, Literal['pass', 'fail', 'skip']]:
+    """Replay the published test contract against the published gold patch."""
+    container: SetupRuntime = SetupRuntime.from_launch_image(
+        image, instance_id, platform, command_timeout=TIMEOUT
+    )
+    try:
+        if not container.apply_patch(test_patch, verbose=True):
+            raise GoldReferenceControlUnavailable(
+                f"benchmark test patch did not apply cleanly for gold control {instance_id}"
+            )
+        if not apply_solution_patch_best_effort(gold_patch, container, platform):
+            raise GoldReferenceControlUnavailable(
+                f"gold patch did not apply cleanly for gold control {instance_id}"
+            )
+        if rebuild_cmd.strip():
+            container.send_command(rebuild_cmd)
+        if not print_cmd.strip():
+            container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
+            test_cmd = "bash run_test.sh > testlog.out 2>&1"
+            print_cmd = "cat testlog.out"
+        container.send_command(test_cmd)
+        post_patch_log: str = container.send_command(print_cmd).output
+        with open(
+            os.path.join(output_dir, "gold_reference_post_patch_log.txt"),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            f.write(post_patch_log)
+        if parser.lower().strip() == "pytest":
+            reference_status = default_pytest_parser(post_patch_log)
+        else:
+            reference_status = run_parser(parser, post_patch_log)
+        with open(
+            os.path.join(output_dir, "gold_reference_status.json"),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(reference_status, f, indent=True)
+        return reference_status
+    finally:
+        container.cleanup()
+
+
 def run_instance(
                     instance: dict,
                     platform: Literal["windows","linux"],
@@ -149,6 +212,9 @@ def run_instance(
         try:
             with open(report_dir, encoding="utf-8") as f:
                 report = json.load(f)
+                if report.get("result_kind") == "unscorable":
+                    print("Unscorable...", "(Skipped)", instance["instance_id"], flush=True)
+                    return report
                 if report.get("resolved", None) is not None:
                     suc = "Success!" if report["resolved"] else "Failed..."
                     print(suc, "(Skipped)", instance["instance_id"], flush=True)
@@ -176,10 +242,11 @@ def run_instance(
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
+        "result_kind": "unresolved",
         "PASS_TO_PASS": {
             "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
             "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
-        }, 
+        },
         "FAIL_TO_PASS": {
             "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
             "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
@@ -191,7 +258,46 @@ def run_instance(
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
         report["resolved"] = True
+        report["result_kind"] = "resolved"
         print("Success!", instance["instance_id"], flush=True)
+    elif not f2p:
+        try:
+            reference_status = evaluate_gold_reference_instance(
+                instance["instance_id"],
+                instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir,
+            )
+        except Exception as exc:
+            report["gold_reference_control"] = {
+                "performed": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            print("Failed...", instance["instance_id"], "(gold reference control unavailable)", flush=True)
+        else:
+            candidate_failures = set(report["FAIL_TO_PASS"]["failure"])
+            reference_failures = {
+                test for test, status in reference_status.items() if "fail" in status.lower()
+            }
+            matching_reference_failures = sorted(candidate_failures & reference_failures)
+            candidate_only_failures = sorted(candidate_failures - reference_failures)
+            report["gold_reference_control"] = {
+                "performed": True,
+                "matching_gold_reference_failures": matching_reference_failures,
+                "candidate_only_failures": candidate_only_failures,
+            }
+            if matching_reference_failures and not candidate_only_failures:
+                report["resolved"] = None
+                report["result_kind"] = "unscorable"
+                print("Unscorable...", instance["instance_id"], "(gold reference also fails target)", flush=True)
+            else:
+                print("Failed...", instance["instance_id"], flush=True)
     else:
         print("Failed...", instance["instance_id"], flush=True)
 
@@ -222,6 +328,7 @@ def run_instances(instances: list[dict[str, str]],
         "failure_ids": [],
         "error_ids": [],
         "incomplete_ids": [],
+        "unscorable_ids": [],
     }
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
@@ -235,7 +342,9 @@ def run_instances(instances: list[dict[str, str]],
             instance = future_to_instance[future]
             try:
                 result = future.result()
-                if result["resolved"] is None:
+                if result.get("result_kind") == "unscorable":
+                    results["unscorable_ids"].append(instance["instance_id"])
+                elif result["resolved"] is None:
                     results["incomplete_ids"].append(instance["instance_id"])
                 elif result["resolved"]:
                     results["success_ids"].append(instance["instance_id"])
@@ -248,6 +357,7 @@ def run_instances(instances: list[dict[str, str]],
     results["failure"] = len(results["failure_ids"])
     results["error"] = len(results["error_ids"])
     results["incomplete"] = len(results["incomplete_ids"])
+    results["unscorable"] = len(results["unscorable_ids"])
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent = True)
@@ -324,6 +434,7 @@ def main(
     print("Empty:", results["empty_patch"])
     print("Error:", results["error"])
     print("Incomplete:", results["incomplete"])
+    print("Unscorable:", results["unscorable"])
     if results["incomplete_ids"]:
         print("Incomplete IDs:", ", ".join(results["incomplete_ids"]))
     print("Evaluation ended successfully.")
