@@ -6,12 +6,83 @@ import json
 import argparse
 import traceback
 import re
+import hashlib
 from typing import Literal, TypedDict
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
 TIMEOUT = 150*60
+
+
+def _patch_sha256(patch: str) -> str:
+    return hashlib.sha256(patch.encode("utf-8")).hexdigest()
+
+
+def _canonical_patch_transport(patch: str) -> str:
+    """Canonicalize CRLF transport for identity checks, but not bare CR."""
+    if "\r" in patch and patch.count("\r") != patch.count("\r\n"):
+        return patch
+    return patch.replace("\r\n", "\n")
+
+
+def _reference_patch_identity(instance: dict) -> dict[str, object]:
+    """Return auditable reference identity without changing the candidate text."""
+    gold = str(instance.get("patch", ""))
+    canonical_gold = _canonical_patch_transport(gold)
+    return {
+        "gold_patch_sha256": _patch_sha256(gold),
+        "gold_patch_bytes": len(gold.encode("utf-8")),
+        "canonical_gold_patch_sha256": _patch_sha256(canonical_gold),
+        "canonical_gold_patch_bytes": len(canonical_gold.encode("utf-8")),
+    }
+
+
+def validate_candidate_provenance(instance: dict) -> dict[str, object]:
+    """Return a provenance signal without making a source-of-origin claim.
+
+    Textual equality is useful audit evidence, but it cannot distinguish an
+    independently reproduced public upstream fix from a reference-derived
+    candidate.  Keep grading and attribution separate: callers should preserve
+    this signal in the report while continuing functional evaluation.
+    """
+    candidate = str(instance.get("pred_patch", ""))
+    canonical_candidate = _canonical_patch_transport(candidate)
+    reference = _reference_patch_identity(instance)
+    candidate_sha = _patch_sha256(candidate)
+    candidate_bytes = len(candidate.encode("utf-8"))
+    canonical_candidate_sha = _patch_sha256(canonical_candidate)
+    canonical_candidate_bytes = len(canonical_candidate.encode("utf-8"))
+    candidate_equals_gold = (
+        candidate_sha == reference["gold_patch_sha256"]
+        and candidate_bytes == reference["gold_patch_bytes"]
+    )
+    candidate_equals_gold_after_crlf = (
+        canonical_candidate_sha == reference["canonical_gold_patch_sha256"]
+        and canonical_candidate_bytes == reference["canonical_gold_patch_bytes"]
+    )
+    if candidate_equals_gold:
+        match_kind = "exact_bytes"
+    elif candidate_equals_gold_after_crlf:
+        match_kind = "crlf_normalized"
+    else:
+        match_kind = "none"
+    return {
+        "candidate_patch_sha256": candidate_sha,
+        "candidate_patch_bytes": candidate_bytes,
+        "canonical_candidate_patch_sha256": canonical_candidate_sha,
+        "canonical_candidate_patch_bytes": canonical_candidate_bytes,
+        **reference,
+        "candidate_equals_gold": candidate_equals_gold,
+        "candidate_equals_gold_after_crlf_normalization": candidate_equals_gold_after_crlf,
+        "reference_match_kind": match_kind,
+        "provenance_status": (
+            "exact_reference_match_unattributed"
+            if candidate_equals_gold_after_crlf
+            else "not_exact_reference_match"
+        ),
+        "review_required": candidate_equals_gold_after_crlf,
+    }
 
 
 def normalize_month(month: str) -> str:
@@ -176,6 +247,7 @@ def run_instance(
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
+        "candidate_provenance": instance.get("candidate_provenance", {}),
         "PASS_TO_PASS": {
             "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
             "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
@@ -222,6 +294,9 @@ def run_instances(instances: list[dict[str, str]],
         "failure_ids": [],
         "error_ids": [],
         "incomplete_ids": [],
+        "infrastructure_error_ids": [],
+        "provenance_review_ids": [],
+        "exact_reference_match_ids": [],
     }
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
@@ -235,7 +310,14 @@ def run_instances(instances: list[dict[str, str]],
             instance = future_to_instance[future]
             try:
                 result = future.result()
-                if result["resolved"] is None:
+                provenance = result.get("candidate_provenance", {})
+                if provenance.get("review_required"):
+                    results["provenance_review_ids"].append(instance["instance_id"])
+                if provenance.get("candidate_equals_gold_after_crlf_normalization"):
+                    results["exact_reference_match_ids"].append(instance["instance_id"])
+                if result.get("grading_status") == "not_evaluated":
+                    results["infrastructure_error_ids"].append(instance["instance_id"])
+                elif result["resolved"] is None:
                     results["incomplete_ids"].append(instance["instance_id"])
                 elif result["resolved"]:
                     results["success_ids"].append(instance["instance_id"])
@@ -248,6 +330,9 @@ def run_instances(instances: list[dict[str, str]],
     results["failure"] = len(results["failure_ids"])
     results["error"] = len(results["error_ids"])
     results["incomplete"] = len(results["incomplete_ids"])
+    results["infrastructure_error"] = len(results["infrastructure_error_ids"])
+    results["provenance_review"] = len(results["provenance_review_ids"])
+    results["exact_reference_match"] = len(results["exact_reference_match_ids"])
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "results.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, indent = True)
@@ -313,6 +398,7 @@ def main(
             continue
         if patch_dir.strip() != "gold" and instance["instance_id"] in preds.keys():
             instance["pred_patch"] = preds[instance["instance_id"]]["model_patch"]
+            instance["candidate_provenance"] = validate_candidate_provenance(instance)
             todos.append(instance)
         elif patch_dir.strip() == "gold":
             instance["pred_patch"] = instance["patch"]
