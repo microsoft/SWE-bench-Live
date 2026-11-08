@@ -45,15 +45,50 @@ def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
         ERROR = "ERROR"
         XFAIL = "XFAIL"
     test_status_map = {}
+    status_prefix = re.compile(r"^(FAILED|PASSED|SKIPPED|ERROR|XFAIL|XPASS)\s+")
     for line in log.split("\n"):
-        if any([line.startswith(x.value) for x in TestStatus]):
-            # Additional parsing for FAILED status
-            if line.startswith(TestStatus.FAILED.value):
-                line = line.replace(" - ", " ")
-            test_case = line.split()
-            if len(test_case) <= 1:
+        match = status_prefix.match(line)
+        if match is None:
+            continue
+        status = match.group(1)
+        remainder = line[match.end():].strip()
+        if not remainder:
+            continue
+        # Pytest node IDs may contain arbitrary spaces inside parameter brackets.
+        # Prefer the balanced node ID rather than line.split(), which truncates
+        # IDs such as test_value[LINESTRING (0 0)].
+        if status == "SKIPPED" and remainder.startswith("["):
+            marker = re.match(r"^\[\d+\]\s+", remainder)
+            if marker:
+                remainder = remainder[marker.end():]
+                # Pytest's normal skipped summary is only a file/line/reason,
+                # not a node ID. Do not invent an identifier from that line.
+                if "::" not in remainder:
+                    continue
+        node_id = remainder
+        first_parameter = node_id.find("[", node_id.find("::") + 2)
+        if first_parameter >= 0:
+            depth = 0
+            for index in range(first_parameter, len(node_id)):
+                character = node_id[index]
+                if character == "[":
+                    depth += 1
+                elif character == "]":
+                    depth -= 1
+                    if depth == 0:
+                        suffix = node_id[index + 1:]
+                        if not suffix or suffix.startswith(" - "):
+                            test_status_map[node_id[:index + 1]] = status
+                            break
+            else:
+                # An unbalanced parameterized node ID is not trustworthy.
                 continue
-            test_status_map[test_case[1]] = test_case[0]
+            if depth == 0:
+                continue
+        if " - " in node_id:
+            node_id = node_id.split(" - ", 1)[0].rstrip()
+        # Keep the ordinary node ID rather than splitting on whitespace.
+        test_status_map[node_id] = status
     return test_status_map
 
 
