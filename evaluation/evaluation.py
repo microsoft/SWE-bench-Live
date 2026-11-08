@@ -8,6 +8,7 @@ import traceback
 import re
 from typing import Literal, TypedDict
 from datasets import load_dataset
+import docker
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
@@ -81,6 +82,15 @@ def get_default_image_name(instance_id: str, platform: Literal["windows", "linux
     image = f"starryzhang/sweb.eval.{med}.{name}"
     return image
 
+def remove_docker_image(image: str) -> None:
+    try:
+        docker.from_env(timeout=600).images.remove(image, force=True)
+        print("Removed image", image, flush=True)
+    except docker.errors.ImageNotFound:
+        pass
+    except Exception as e:
+        print(f"Failed to remove image {image}: {e}", flush=True)
+
 def apply_solution_patch_best_effort(solution_patch: str, 
                                     container: SetupRuntime,
                                     platform: Literal["windows", "linux"]) -> None:
@@ -142,6 +152,7 @@ def run_instance(
                     output_dir: str,
                     overwrite: bool,
                     collect_only: bool = False,
+                    remove_image: bool = False,
                 ):
     instance_output_dir = os.path.join(output_dir, instance["instance_id"])
     report_dir = os.path.join(instance_output_dir, "report.json")
@@ -159,18 +170,23 @@ def run_instance(
         print("Incomplete...", instance["instance_id"], flush=True)
         return {"instance_id": instance["instance_id"], "resolved": None}
     os.makedirs(instance_output_dir, exist_ok=True)
-    res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
-            instance["instance_id"],
-            instance.get("docker_image", get_default_image_name(instance["instance_id"], platform)),
-            " ; ".join(instance.get("rebuild_cmds", [])),
-            " ; ".join(instance.get("test_cmds", [])),
-            " ; ".join(instance.get("print_cmds", [])),
-            instance["test_patch"],
-            instance["pred_patch"],
-            instance.get("log_parser", instance.get("parser", "")),
-            platform,
-            instance_output_dir
-    )
+    image = instance.get("docker_image", get_default_image_name(instance["instance_id"], platform))
+    try:
+        res: dict[str, Literal['pass', 'fail', 'skip']] = evaluate_instance(
+                instance["instance_id"],
+                image,
+                " ; ".join(instance.get("rebuild_cmds", [])),
+                " ; ".join(instance.get("test_cmds", [])),
+                " ; ".join(instance.get("print_cmds", [])),
+                instance["test_patch"],
+                instance["pred_patch"],
+                instance.get("log_parser", instance.get("parser", "")),
+                platform,
+                instance_output_dir
+        )
+    finally:
+        if remove_image:
+            remove_docker_image(image)
     suc = [test for test in res.keys() if 'pass' in res[test].lower()]
     fail = [test for test in res.keys() if 'fail' in res[test].lower()]
     report = {
@@ -204,7 +220,8 @@ def run_instances(instances: list[dict[str, str]],
                     workers: int,
                     output_dir: str,
                     overwrite: bool,
-                    collect_only: bool = False):
+                    collect_only: bool = False,
+                    remove_image: bool = False):
     todos = []
     empty_instance_ids = []
     for i in instances:
@@ -226,7 +243,7 @@ def run_instances(instances: list[dict[str, str]],
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
         future_to_instance = {
-            executor.submit(run_instance, instance, platform, output_dir, overwrite, collect_only): instance
+            executor.submit(run_instance, instance, platform, output_dir, overwrite, collect_only, remove_image): instance
             for instance in todos
         }
 
@@ -265,6 +282,7 @@ def main(
             start_month: str | None = None,
             end_month: str | None = None,
             collect_only: bool = False,
+            remove_image: bool = False,
         ):
     if patch_dir.strip() != "gold":
         with open(patch_dir, encoding="utf-8") as f:
@@ -317,7 +335,7 @@ def main(
         elif patch_dir.strip() == "gold":
             instance["pred_patch"] = instance["patch"]
             todos.append(instance)
-    results = run_instances(todos, platform, workers, output_dir, overwrite != 0, collect_only)
+    results = run_instances(todos, platform, workers, output_dir, overwrite != 0, collect_only, remove_image)
     print("Submitted:", results["submitted"])
     print("Success:", results["success"])
     print("Failure:", results["failure"])
@@ -346,6 +364,7 @@ if __name__ == "__main__":
     parser.add_argument("--start-month", type=str, default=None, help="Start month (inclusive) in YYYY-MM format")
     parser.add_argument("--end-month", type=str, default=None, help="End month (inclusive) in YYYY-MM format")
     parser.add_argument("--collect-only", action="store_true", help="Only collect existing results without running unfinished instances")
+    parser.add_argument("--remove-image", action="store_true", help="Remove each instance's docker image after evaluating it to save disk space")
 
     args = parser.parse_args()
     
@@ -361,4 +380,5 @@ if __name__ == "__main__":
         start_month=args.start_month,
         end_month=args.end_month,
         collect_only=args.collect_only,
+        remove_image=args.remove_image,
     )
