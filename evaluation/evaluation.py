@@ -12,7 +12,9 @@ import docker
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 
-TIMEOUT = 150*60
+# RepoLaunch interprets command_timeout in minutes. Keep the evaluator's
+# public timeout contract in the same unit instead of passing seconds as minutes.
+COMMAND_TIMEOUT_MINUTES = 150
 
 
 def normalize_month(month: str) -> str:
@@ -121,7 +123,7 @@ def evaluate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
-    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+    container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=COMMAND_TIMEOUT_MINUTES)
     container.apply_patch(test_patch)
     container.apply_patch(solution_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
