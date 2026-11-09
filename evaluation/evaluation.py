@@ -11,6 +11,7 @@ from datasets import load_dataset
 import docker
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+from evaluation.windows_go_json import filter_windows_go_json_status
 
 TIMEOUT = 150*60
 
@@ -141,6 +142,11 @@ def evaluate_instance(
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
     else:
         post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
+    post_patch_status = filter_windows_go_json_status(
+        post_patch_status,
+        post_patch_log,
+        platform,
+    )
     container.cleanup()
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
