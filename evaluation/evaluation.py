@@ -120,28 +120,31 @@ def evaluate_instance(
                     parser: str,
                     platform: Literal["windows", "linux"],
                     output_dir: str,
+                    prune_dangling_images: bool = False,
                     ) -> dict[str, Literal['pass', 'fail', 'skip']]:
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
-    container.apply_patch(test_patch)
-    container.apply_patch(solution_patch, verbose=True)
-    # Remember to rebuild after modifications to source codes !!!
-    if rebuild_cmd.strip():
-        container.send_command(rebuild_cmd)
-    if not print_cmd.strip():
-        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
-        container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
-        test_cmd = "bash run_test.sh > testlog.out 2>&1"
-        print_cmd = "cat testlog.out"
-    container.send_command(test_cmd)
-    post_patch_log: str = container.send_command(print_cmd).output
-    with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
-        f.write(post_patch_log)
-    if parser.lower().strip() == "pytest":
-        # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
-        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
-    else:
-        post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
-    container.cleanup()
+    try:
+        container.apply_patch(test_patch)
+        container.apply_patch(solution_patch, verbose=True)
+        # Remember to rebuild after modifications to source codes !!!
+        if rebuild_cmd.strip():
+            container.send_command(rebuild_cmd)
+        if not print_cmd.strip():
+            # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+            container.send_command(f"cat > run_test.sh <<'CC_PROMPT'\n{test_cmd}\nCC_PROMPT\n")
+            test_cmd = "bash run_test.sh > testlog.out 2>&1"
+            print_cmd = "cat testlog.out"
+        container.send_command(test_cmd)
+        post_patch_log: str = container.send_command(print_cmd).output
+        with open(os.path.join(output_dir, "post_patch_log.txt"), "w", encoding="utf-8") as f:
+            f.write(post_patch_log)
+        if parser.lower().strip() == "pytest":
+            # for backward compatibility with SWE-bench-Live/SWE-bench-Live (Python)
+            post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = default_pytest_parser(post_patch_log)
+        else:
+            post_patch_status: dict[str, Literal['pass', 'fail', 'skip']] = run_parser(parser, post_patch_log)
+    finally:
+        container.cleanup(prune_dangling=prune_dangling_images)
     with open(os.path.join(output_dir, "status.json"), "w", encoding="utf-8") as f:
         json.dump(post_patch_status, f, indent = True)
     return post_patch_status
@@ -153,6 +156,7 @@ def run_instance(
                     overwrite: bool,
                     collect_only: bool = False,
                     remove_image: bool = False,
+                    prune_dangling_images: bool = False,
                 ):
     instance_output_dir = os.path.join(output_dir, instance["instance_id"])
     report_dir = os.path.join(instance_output_dir, "report.json")
@@ -182,7 +186,8 @@ def run_instance(
                 instance["pred_patch"],
                 instance.get("log_parser", instance.get("parser", "")),
                 platform,
-                instance_output_dir
+                instance_output_dir,
+                prune_dangling_images,
         )
     finally:
         if remove_image:
@@ -221,7 +226,8 @@ def run_instances(instances: list[dict[str, str]],
                     output_dir: str,
                     overwrite: bool,
                     collect_only: bool = False,
-                    remove_image: bool = False):
+                    remove_image: bool = False,
+                    prune_dangling_images: bool = False):
     todos = []
     empty_instance_ids = []
     for i in instances:
@@ -243,7 +249,7 @@ def run_instances(instances: list[dict[str, str]],
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit tasks to the executor
         future_to_instance = {
-            executor.submit(run_instance, instance, platform, output_dir, overwrite, collect_only, remove_image): instance
+            executor.submit(run_instance, instance, platform, output_dir, overwrite, collect_only, remove_image, prune_dangling_images): instance
             for instance in todos
         }
 
@@ -283,6 +289,7 @@ def main(
             end_month: str | None = None,
             collect_only: bool = False,
             remove_image: bool = False,
+            prune_dangling_images: bool = False,
         ):
     if patch_dir.strip() != "gold":
         with open(patch_dir, encoding="utf-8") as f:
@@ -335,7 +342,7 @@ def main(
         elif patch_dir.strip() == "gold":
             instance["pred_patch"] = instance["patch"]
             todos.append(instance)
-    results = run_instances(todos, platform, workers, output_dir, overwrite != 0, collect_only, remove_image)
+    results = run_instances(todos, platform, workers, output_dir, overwrite != 0, collect_only, remove_image, prune_dangling_images)
     print("Submitted:", results["submitted"])
     print("Success:", results["success"])
     print("Failure:", results["failure"])
@@ -365,6 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("--end-month", type=str, default=None, help="End month (inclusive) in YYYY-MM format")
     parser.add_argument("--collect-only", action="store_true", help="Only collect existing results without running unfinished instances")
     parser.add_argument("--remove-image", action="store_true", help="Remove each instance's docker image after evaluating it to save disk space")
+    parser.add_argument("--prune-dangling-images", action="store_true", help="Prune all dangling docker images on the host after each instance (affects images not created by this run)")
 
     args = parser.parse_args()
     
@@ -381,4 +389,5 @@ if __name__ == "__main__":
         end_month=args.end_month,
         collect_only=args.collect_only,
         remove_image=args.remove_image,
+        prune_dangling_images=args.prune_dangling_images,
     )
