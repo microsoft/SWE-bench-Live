@@ -2,6 +2,10 @@ import sys, os
 sys.path.insert(0, os.path.join(os.getcwd(), "launch"))
 from launch.core.runtime import SetupRuntime
 from launch.scripts.parser import run_parser
+from evaluation.worktree_contract import (
+    get_windows_evaluation_worktree,
+    set_windows_evaluation_worktree,
+)
 import json
 from typing import Literal, TypedDict
 from fire import Fire
@@ -46,10 +50,15 @@ def validate_instance(
                     platform: Literal["windows", "linux"],
                     output_dir: str,
                     ) -> ValidationResult:
+    evaluation_worktree = get_windows_evaluation_worktree(
+        (rebuild_cmd, test_cmd, print_cmd)
+    )
     container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+    set_windows_evaluation_worktree(container, platform, evaluation_worktree)
     container.apply_patch(test_patch, verbose=True)
     # Remember to rebuild after modifications to source codes !!!
     container.send_command(rebuild_cmd)
+    set_windows_evaluation_worktree(container, platform, evaluation_worktree)
     container.send_command(test_cmd)
     pre_patch_log: str = container.send_command(print_cmd).output
     with open(os.path.join(output_dir, "pre_patch_log.txt"), "w", encoding="utf-8") as f:
@@ -64,9 +73,11 @@ def validate_instance(
     # 3 validation for stable states
     for check in range(3):
         container: SetupRuntime = SetupRuntime.from_launch_image(image, instance_id, platform, command_timeout=TIMEOUT)
+        set_windows_evaluation_worktree(container, platform, evaluation_worktree)
         container.apply_patch(test_patch, verbose=True)
         container.apply_patch(solution_patch, verbose=True)
         container.send_command(rebuild_cmd)
+        set_windows_evaluation_worktree(container, platform, evaluation_worktree)
         container.send_command(test_cmd)
         post_patch_log: str = container.send_command(print_cmd).output
         post_patch_log_accumulate += f"eval No.{check} \n\n========  \n\n{post_patch_log} \n\n"
