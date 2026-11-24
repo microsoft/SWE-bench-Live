@@ -48,14 +48,55 @@ def parse_log_pytest(log: str, test_spec: "TestSpec") -> dict[str, str]:
     test_status_map = {}
     for line in log.split("\n"):
         if any([line.startswith(x.value) for x in TestStatus]):
-            # Additional parsing for FAILED status
-            if line.startswith(TestStatus.FAILED.value):
-                line = line.replace(" - ", " ")
-            test_case = line.split()
-            if len(test_case) <= 1:
+            status, _, rest = line.partition(" ")
+            # Parametrized pytest ids may contain spaces (SWE-bench #279), so take the
+            # whole node id instead of the first whitespace-separated token.
+            test_id = _pytest_node_id(rest)
+            if not test_id:
                 continue
-            test_status_map[test_case[1]] = test_case[0]
+            # "SKIPPED [N] path:line: reason" is a summary line; [N] is not a test
+            if status == TestStatus.SKIPPED.value and re.fullmatch(r"\[\d+\]", test_id):
+                continue
+            test_status_map[test_id] = status
     return test_status_map
+
+
+def _pytest_node_id(rest: str) -> str:
+    """
+    The pytest node id at the start of a short-summary line, after the status word.
+
+    The id ends at the first whitespace outside its [...] parameters, which keeps
+    spaces and " - " inside parameters (e.g. "test_unparse[a - b-a - b]") and drops
+    whatever follows the id: " - <message>" on FAILED/ERROR/XFAIL lines and the bare
+    reason on XPASS lines. If the brackets never balance, fall back to the first
+    whitespace-separated token, as before.
+    """
+    rest = rest.strip()
+    depth = 0
+    for i, ch in enumerate(rest):
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth = max(depth - 1, 0)
+        elif ch.isspace() and depth == 0:
+            return rest[:i]
+    if depth == 0:
+        return rest
+    tokens = rest.split()
+    return tokens[0] if tokens else ""
+
+
+def resolve_test_case(case: str, statuses: dict[str, str]) -> str | None:
+    """
+    The key in `statuses` for the expected test id `case`, or None if it has no result.
+    """
+    if case in statuses:
+        return case
+    if case.count("[") > case.count("]"):
+        matches = [k for k in statuses if k.split(maxsplit=1)[0] == case]
+        if matches and len({statuses[k] for k in matches}) == 1:
+            return matches[0]
+    return None
 
 
 def default_pytest_parser(log: str) -> dict[str, str]:
@@ -188,23 +229,26 @@ def run_instance(
     finally:
         if remove_image:
             remove_docker_image(image)
-    suc = [test for test in res.keys() if 'pass' in res[test].lower()]
-    fail = [test for test in res.keys() if 'fail' in res[test].lower()]
+    # Resolve each expected id to its result key (exact, or a truncated legacy id).
+    keys = {test: resolve_test_case(test, res)
+            for test in set(instance["FAIL_TO_PASS"]) | set(instance["PASS_TO_PASS"])}
+    def with_status(tests, word):
+        return [t for t in set(tests) if keys[t] is not None and word in res[keys[t]].lower()]
     report = {
         "instance_id": instance["instance_id"],
         "resolved": False,
         "PASS_TO_PASS": {
-            "success": list(set(suc)&set(instance["PASS_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["PASS_TO_PASS"])),
-        }, 
+            "success": with_status(instance["PASS_TO_PASS"], "pass"),
+            "failure": with_status(instance["PASS_TO_PASS"], "fail"),
+        },
         "FAIL_TO_PASS": {
-            "success": list(set(suc)&set(instance["FAIL_TO_PASS"])),
-            "failure": list(set(fail)&set(instance["FAIL_TO_PASS"])),
+            "success": with_status(instance["FAIL_TO_PASS"], "pass"),
+            "failure": with_status(instance["FAIL_TO_PASS"], "fail"),
         },
     }
     f2p = set(instance["FAIL_TO_PASS"]).issubset(set(report["FAIL_TO_PASS"]["success"])) \
         or (len(report["FAIL_TO_PASS"]["success"]) == len(instance["FAIL_TO_PASS"]))
-    p2p = set(instance["PASS_TO_PASS"]).issubset(set(res))
+    p2p = all(keys[t] is not None for t in instance["PASS_TO_PASS"])
     if p2p and (len(report["PASS_TO_PASS"]["failure"]) == 0) \
         and (len(report["FAIL_TO_PASS"]["failure"]) == 0) \
         and f2p:
